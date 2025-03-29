@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Projetos Complexos</title>
+    <title>Projetos Compartilhados</title>
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #1a1a1a; color: #e0e0e0; }
+        #loginContainer { display: block; }
+        #appContainer { display: none; }
         .header { display: flex; justify-content: space-between; align-items: center; }
         h1 { margin: 0; color: #ffffff; }
         .category-buttons { display: flex; gap: 10px; }
@@ -43,41 +45,56 @@
     </style>
 </head>
 <body>
-    <div class="header">
-        <h1>Projetos Complexos</h1>
-        <div class="category-buttons">
-            <button id="mainProjectsBtn">Projetos Principais</button>
-            <button id="proposedBtn">Proj. Propostos</button>
-            <button id="inProgressBtn">Proj. em Andamento</button>
-            <button id="futureBtn">Proj. Futuros</button>
-            <button id="allBtn">Todos</button>
-        </div>
+    <!-- Container de Login -->
+    <div id="loginContainer">
+        <h1>Login - Projetos Compartilhados</h1>
+        <input type="email" id="email" placeholder="E-mail">
+        <input type="password" id="password" placeholder="Senha">
+        <button id="loginButton">Entrar</button>
+        <div id="loginError"></div>
     </div>
-    <input type="text" id="taskInput" placeholder="Digite uma tarefa ou subtarefa">
-    <input type="date" id="dueDate" placeholder="Data de término (opcional)">
-    <input type="number" id="priority" min="1" max="1000" placeholder="Prioridade (1-1000)">
-    <button id="actionButton">Adicionar</button>
-    <div id="error"></div>
-    <div id="success"></div>
-    <ul id="taskList"></ul>
+
+    <!-- Container do Aplicativo -->
+    <div id="appContainer">
+        <div class="header">
+            <h1>Projetos Compartilhados</h1>
+            <div class="category-buttons">
+                <button id="mainProjectsBtn">Projetos Principais</button>
+                <button id="proposedBtn">Proj. Propostos</button>
+                <button id="inProgressBtn">Proj. em Andamento</button>
+                <button id="futureBtn">Proj. Futuros</button>
+                <button id="allBtn">Todos</button>
+                <button id="logoutButton">Sair</button>
+            </div>
+        </div>
+        <input type="text" id="taskInput" placeholder="Digite uma tarefa ou subtarefa">
+        <input type="date" id="dueDate" placeholder="Data de término (opcional)">
+        <input type="number" id="priority" min="1" max="1000" placeholder="Prioridade (1-1000)">
+        <button id="actionButton">Adicionar</button>
+        <div id="error"></div>
+        <div id="success"></div>
+        <ul id="taskList"></ul>
+    </div>
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
         import { getDatabase, ref, onValue, push, update, remove, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
 
         const firebaseConfig = {
-  apiKey: "AIzaSyDMRrgMcEvUaiI7sNbmLwy-9Eim13979LY",
-  authDomain: "projetos-compartilhados.firebaseapp.com",
-  databaseURL: "https://projetos-compartilhados-default-rtdb.firebaseio.com",
-  projectId: "projetos-compartilhados",
-  storageBucket: "projetos-compartilhados.firebasestorage.app",
-  messagingSenderId: "517091337770",
-  appId: "1:517091337770:web:596b8c0da2b7c3e45b4553",
-  measurementId: "G-2DSZ3QKRB2"
-};
+            apiKey: "AIzaSyDMRrgMcEvUaiI7sNbmLwy-9Eim13979LY",
+            authDomain: "projetos-compartilhados.firebaseapp.com",
+            databaseURL: "https://projetos-compartilhados-default-rtdb.firebaseio.com",
+            projectId: "projetos-compartilhados",
+            storageBucket: "projetos-compartilhados.firebasestorage.app",
+            messagingSenderId: "517091337770",
+            appId: "1:517091337770:web:596b8c0da2b7c3e45b4553",
+            measurementId: "G-2DSZ3QKRB2"
+        };
 
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
+        const auth = getAuth(app);
         const tasksRef = ref(db, 'tasks');
         let editingTaskKey = null;
         let editingSubtask = null;
@@ -85,12 +102,68 @@
         let currentCategory = 'mainProjects';
         let targetTaskKey = null;
 
+        // Elementos do DOM
+        const loginContainer = document.getElementById('loginContainer');
+        const appContainer = document.getElementById('appContainer');
+        const emailInput = document.getElementById('email');
+        const passwordInput = document.getElementById('password');
+        const loginButton = document.getElementById('loginButton');
+        const logoutButton = document.getElementById('logoutButton');
+        const loginError = document.getElementById('loginError');
+
         // Função de log simples
         function log(message) {
             console.log(`[LOG ${new Date().toLocaleTimeString()}]: ${message}`);
         }
 
         log("Firebase conectado com sucesso!");
+
+        // Verificar estado de autenticação
+        onAuthStateChanged(auth, (user) => {
+            if (user) {
+                log(`Usuário autenticado: ${user.email}`);
+                loginContainer.style.display = 'none';
+                appContainer.style.display = 'block';
+                renderTasks(); // Renderizar tarefas após login
+            } else {
+                log("Nenhum usuário autenticado. Faça login.");
+                loginContainer.style.display = 'block';
+                appContainer.style.display = 'none';
+            }
+        });
+
+        // Função de login
+        loginButton.addEventListener('click', () => {
+            const email = emailInput.value.trim();
+            const password = passwordInput.value.trim();
+
+            if (!email || !password) {
+                loginError.textContent = "Preencha e-mail e senha!";
+                return;
+            }
+
+            signInWithEmailAndPassword(auth, email, password)
+                .then((userCredential) => {
+                    const user = userCredential.user;
+                    log(`Login bem-sucedido: ${user.email}`);
+                    loginError.textContent = '';
+                })
+                .catch((error) => {
+                    loginError.textContent = `Erro ao fazer login: ${error.message}`;
+                    log(`Erro ao fazer login: ${error.message}`);
+                });
+        });
+
+        // Função de logout
+        logoutButton.addEventListener('click', () => {
+            signOut(auth)
+                .then(() => {
+                    log("Logout realizado com sucesso.");
+                })
+                .catch((error) => {
+                    log(`Erro ao fazer logout: ${error.message}`);
+                });
+        });
 
         // Função auxiliar para atraso
         function wait(ms) {
@@ -103,7 +176,7 @@
             const targetPosition = taskInput.getBoundingClientRect().top + window.pageYOffset - 20;
             const startPosition = window.pageYOffset;
             const distance = targetPosition - startPosition;
-            const duration = 1000; // 1 segundo
+            const duration = 1000;
             let startTime = null;
 
             log(`Iniciando rolagem para o input: posição calculada=${targetPosition}, posição atual=${startPosition}`);
@@ -112,7 +185,7 @@
                 if (!startTime) startTime = currentTime;
                 const elapsed = currentTime - startTime;
                 const progress = Math.min(elapsed / duration, 1);
-                const ease = progress * (2 - progress); // Ease-in-out
+                const ease = progress * (2 - progress);
                 window.scrollTo(0, startPosition + distance * ease);
 
                 if (progress < 1) {
@@ -128,11 +201,8 @@
         // Expandir todos os níveis até o elemento alvo e rolar suavemente
         async function scrollToTarget(key, path = '') {
             log(`Iniciando scrollToTarget para key=${key}, path=${path}`);
-
-            // Aguardar atualização do Firebase e renderização (aumentado para 1000ms)
             await wait(1000);
 
-            // Função para encontrar e expandir o elemento
             const expandAndFindElement = async () => {
                 const rootElement = document.querySelector(`li[data-key="${key}"]`);
                 if (!rootElement) {
@@ -141,9 +211,7 @@
                 }
                 log(`Elemento raiz encontrado: key=${key}`);
 
-                if (!path) {
-                    return rootElement;
-                }
+                if (!path) return rootElement;
 
                 const parts = path.split('/').filter(p => p !== '');
                 let currentElement = rootElement;
@@ -157,19 +225,19 @@
                         if (!subtasksContainer.classList.contains('visible')) {
                             subtasksContainer.classList.add('visible');
                             expandBtn.textContent = '−';
-                            updateExpansionState(key, currentPath, true); // Persistir expansão
+                            updateExpansionState(key, currentPath, true);
                             log(`Expandido: ${currentPath}`);
-                            await wait(200); // Atraso maior para cada nível
+                            await wait(200);
                         }
                     } else {
                         log(`Erro: Container ou botão de expansão não encontrado em ${currentPath}`);
-                        return rootElement; // Fallback para a raiz
+                        return rootElement;
                     }
 
                     currentElement = subtasksContainer.querySelector(`li[data-subtask-index="${part}"]`);
                     if (!currentElement) {
                         log(`Erro: Subtarefa não encontrada no path=${currentPath}/${part}`);
-                        return rootElement; // Fallback para a raiz
+                        return rootElement;
                     }
                     currentPath += `/${part}`;
                 }
@@ -180,15 +248,9 @@
             const targetElement = await expandAndFindElement();
             if (targetElement) {
                 const rect = targetElement.getBoundingClientRect();
-                const scrollPosition = rect.top + window.pageYOffset - 50; // Offset para visibilidade
+                const scrollPosition = rect.top + window.pageYOffset - 50;
                 log(`Calculando rolagem: top=${rect.top}, pageYOffset=${window.pageYOffset}, scrollPosition=${scrollPosition}`);
-
-                window.scrollTo({
-                    top: scrollPosition,
-                    behavior: 'smooth'
-                });
-
-                // Aguardar a rolagem terminar
+                window.scrollTo({ top: scrollPosition, behavior: 'smooth' });
                 await wait(1000);
                 log(`Rolagem concluída para ${path ? `subtarefa em ${key}/${path}` : `tarefa em ${key}`}`);
             } else {
@@ -204,7 +266,7 @@
                 if (!path) {
                     task.expanded = isExpanded;
                 } else {
-                    const parts = path.split('/').filter(p => p !== '').slice(1); // Remove a chave raiz
+                    const parts = path.split('/').filter(p => p !== '').slice(1);
                     let current = task;
                     for (const index of parts) {
                         current = current.subtasks[parseInt(index)];
@@ -632,7 +694,7 @@
             log(`Renderizando subtarefas: key=${key}, path=${path}, level=${level}`);
             if (!task.subtasks || task.subtasks.length === 0 || level > 4) return;
 
-            container.innerHTML = ''; // Limpar o container
+            container.innerHTML = '';
 
             const sortedSubtasks = task.subtasks.map((subtask, originalIndex) => ({ subtask, originalIndex }))
                 .sort((a, b) => {
