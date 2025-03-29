@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Projetos Complexos</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #1a1a1a; color: #e0e0e0; }
+        .header { display: flex; justify-content: space-between; align-items: center; }
+        h1 { margin: 0; color: #ffffff; }
+        .category-buttons { display: flex; gap: 10px; }
+        input, button { font-size: 18px; padding: 10px; margin: 5px; background: #333; color: #e0e0e0; border: 1px solid #555; }
+        #taskInput { width: 600px; }
+        button:hover { background: #555; }
+        button.active { background: #555; font-weight: bold; }
+        ul { list-style-type: none; padding: 0; }
+        li { font-size: 18px; margin: 10px 0; background: #2a2a2a; padding: 10px; border-radius: 5px; cursor: pointer; }
+        .task-row { display: flex; align-items: center; gap: 10px; }
+        .notes { display: none; margin-top: 10px; padding: 10px; background: #333; border-radius: 5px; width: 100%; }
+        .notes.visible { display: block; }
+        textarea { width: 100%; background: #444; color: #e0e0e0; border: 1px solid #555; padding: 5px; box-sizing: border-box; }
+        .completed { text-decoration: line-through; color: #888; }
+        #error { color: #ff5555; text-align: center; }
+        #success { color: #55ff55; text-align: center; }
+        .has-notes { margin-left: 10px; font-style: italic; cursor: pointer; }
+        .task-text.bold-italic { font-weight: bold; font-style: italic; }
+        .category-dropdown { position: relative; display: inline-block; }
+        .dropdown-content { display: none; position: absolute; background-color: #333; min-width: 160px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 1; border-radius: 5px; }
+        .dropdown-content button { width: 100%; text-align: left; padding: 10px; margin: 0; }
+        .dropdown-content button:hover { background-color: #555; }
+        .date-today { color: #1e90ff; }
+        .date-one-day-past { color: #ffff00; }
+        .date-two-plus-days-past { color: #ff0000; }
+        .subtask-level-1 { margin-left: 60px; background: #3a3a3a; }
+        .subtask-level-2 { margin-left: 120px; background: #4a4a4a; }
+        .subtask-level-3 { margin-left: 180px; background: #5a5a5a; }
+        .subtask-level-4 { margin-left: 240px; background: #6a6a6a; }
+        .expand-btn { font-size: 18px; padding: 0; width: 20px; height: 20px; line-height: 20px; text-align: center; cursor: pointer; background: none; border: none; color: #e0e0e0; margin: 0 10px 0 0; flex-shrink: 0; }
+        .expand-placeholder { width: 20px; height: 20px; margin: 0 10px 0 0; display: inline-block; flex-shrink: 0; }
+        .task-row input[type="checkbox"] { width: 18px; height: 18px; margin: 0 10px 0 0; flex-shrink: 0; }
+        .subtasks-container { display: none; }
+        .subtasks-container.visible { display: block; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Projetos Complexos</h1>
+        <div class="category-buttons">
+            <button id="mainProjectsBtn">Projetos Principais</button>
+            <button id="proposedBtn">Proj. Propostos</button>
+            <button id="inProgressBtn">Proj. em Andamento</button>
+            <button id="futureBtn">Proj. Futuros</button>
+            <button id="allBtn">Todos</button>
+        </div>
+    </div>
+    <input type="text" id="taskInput" placeholder="Digite uma tarefa ou subtarefa">
+    <input type="date" id="dueDate" placeholder="Data de término (opcional)">
+    <input type="number" id="priority" min="1" max="1000" placeholder="Prioridade (1-1000)">
+    <button id="actionButton">Adicionar</button>
+    <div id="error"></div>
+    <div id="success"></div>
+    <ul id="taskList"></ul>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getDatabase, ref, onValue, push, update, remove, set } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyA7EFA0dC1ZPikyJSHuqnhmul-4dnugfp0",
+            authDomain: "projetos-complexos.firebaseapp.com",
+            databaseURL: "https://projetos-complexos-default-rtdb.firebaseio.com",
+            projectId: "projetos-complexos",
+            storageBucket: "projetos-complexos.firebasestorage.app",
+            messagingSenderId: "473821406890",
+            appId: "1:473821406890:web:2b271ae806ecdac18892d3",
+            measurementId: "G-L5Z04Z3HG3"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const tasksRef = ref(db, 'tasks');
+        let editingTaskKey = null;
+        let editingSubtask = null;
+        let addingSubtaskToKey = null;
+        let currentCategory = 'mainProjects';
+        let targetTaskKey = null;
+
+        // Função de log simples
+        function log(message) {
+            console.log(`[LOG ${new Date().toLocaleTimeString()}]: ${message}`);
+        }
+
+        log("Firebase conectado com sucesso!");
+
+        // Função auxiliar para atraso
+        function wait(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        // Rolagem suave manual para o input
+        function scrollToInput() {
+            const taskInput = document.getElementById('taskInput');
+            const targetPosition = taskInput.getBoundingClientRect().top + window.pageYOffset - 20;
+            const startPosition = window.pageYOffset;
+            const distance = targetPosition - startPosition;
+            const duration = 1000; // 1 segundo
+            let startTime = null;
+
+            log(`Iniciando rolagem para o input: posição calculada=${targetPosition}, posição atual=${startPosition}`);
+
+            function animateScroll(currentTime) {
+                if (!startTime) startTime = currentTime;
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const ease = progress * (2 - progress); // Ease-in-out
+                window.scrollTo(0, startPosition + distance * ease);
+
+                if (progress < 1) {
+                    requestAnimationFrame(animateScroll);
+                } else {
+                    log(`Rolagem para o input concluída: posição=${targetPosition}`);
+                }
+            }
+
+            requestAnimationFrame(animateScroll);
+        }
+
+        // Expandir todos os níveis até o elemento alvo e rolar suavemente
+        async function scrollToTarget(key, path = '') {
+            log(`Iniciando scrollToTarget para key=${key}, path=${path}`);
+
+            // Aguardar atualização do Firebase e renderização (aumentado para 1000ms)
+            await wait(1000);
+
+            // Função para encontrar e expandir o elemento
+            const expandAndFindElement = async () => {
+                const rootElement = document.querySelector(`li[data-key="${key}"]`);
+                if (!rootElement) {
+                    log(`Erro: Elemento raiz não encontrado para key=${key}`);
+                    return null;
+                }
+                log(`Elemento raiz encontrado: key=${key}`);
+
+                if (!path) {
+                    return rootElement;
+                }
+
+                const parts = path.split('/').filter(p => p !== '');
+                let currentElement = rootElement;
+                let currentPath = key;
+
+                for (const part of parts) {
+                    const subtasksContainer = currentElement.querySelector('.subtasks-container');
+                    const expandBtn = currentElement.querySelector('.expand-btn');
+
+                    if (subtasksContainer && expandBtn) {
+                        if (!subtasksContainer.classList.contains('visible')) {
+                            subtasksContainer.classList.add('visible');
+                            expandBtn.textContent = '−';
+                            updateExpansionState(key, currentPath, true); // Persistir expansão
+                            log(`Expandido: ${currentPath}`);
+                            await wait(200); // Atraso maior para cada nível
+                        }
+                    } else {
+                        log(`Erro: Container ou botão de expansão não encontrado em ${currentPath}`);
+                        return rootElement; // Fallback para a raiz
+                    }
+
+                    currentElement = subtasksContainer.querySelector(`li[data-subtask-index="${part}"]`);
+                    if (!currentElement) {
+                        log(`Erro: Subtarefa não encontrada no path=${currentPath}/${part}`);
+                        return rootElement; // Fallback para a raiz
+                    }
+                    currentPath += `/${part}`;
+                }
+
+                return currentElement;
+            };
+
+            const targetElement = await expandAndFindElement();
+            if (targetElement) {
+                const rect = targetElement.getBoundingClientRect();
+                const scrollPosition = rect.top + window.pageYOffset - 50; // Offset para visibilidade
+                log(`Calculando rolagem: top=${rect.top}, pageYOffset=${window.pageYOffset}, scrollPosition=${scrollPosition}`);
+
+                window.scrollTo({
+                    top: scrollPosition,
+                    behavior: 'smooth'
+                });
+
+                // Aguardar a rolagem terminar
+                await wait(1000);
+                log(`Rolagem concluída para ${path ? `subtarefa em ${key}/${path}` : `tarefa em ${key}`}`);
+            } else {
+                log(`Falha ao rolar: elemento não encontrado para key=${key}, path=${path}`);
+            }
+        }
+
+        // Função para atualizar o estado de expansão no Firebase
+        function updateExpansionState(key, path, isExpanded) {
+            const taskRef = ref(db, `tasks/${key}`);
+            onValue(taskRef, (snapshot) => {
+                const task = snapshot.val();
+                if (!path) {
+                    task.expanded = isExpanded;
+                } else {
+                    const parts = path.split('/').filter(p => p !== '').slice(1); // Remove a chave raiz
+                    let current = task;
+                    for (const index of parts) {
+                        current = current.subtasks[parseInt(index)];
+                    }
+                    current.expanded = isExpanded;
+                }
+                update(taskRef, task)
+                    .then(() => log(`Estado de expansão atualizado para ${path || key}: ${isExpanded}`))
+                    .catch(error => log(`Erro ao atualizar estado de expansão: ${error.message}`));
+            }, { onlyOnce: true });
+        }
+
+        function saveTask(taskKey = null) {
+            const taskInput = document.getElementById('taskInput');
+            const dueDateInput = document.getElementById('dueDate');
+            const priorityInput = document.getElementById('priority');
+            const taskText = taskInput.value.trim();
+            let dueDate = dueDateInput.value || null;
+            const priority = parseInt(priorityInput.value) || 1;
+
+            log(`saveTask chamado: taskText="${taskText}", editingTaskKey=${editingTaskKey}, editingSubtask=${JSON.stringify(editingSubtask)}, addingSubtaskToKey=${JSON.stringify(addingSubtaskToKey)}`);
+
+            if (taskText === '') {
+                document.getElementById('error').textContent = "Preencha a tarefa!";
+                log("Erro: Tarefa vazia");
+                return;
+            }
+
+            const validateSubtaskConstraints = (parentTask, newDueDate, newPriority) => {
+                if (!parentTask) {
+                    log("Erro: parentTask é undefined");
+                    return true;
+                }
+                if (newDueDate && parentTask.dueDate && newDueDate > parentTask.dueDate) {
+                    document.getElementById('error').textContent = "Data da subtarefa não pode ser posterior à da tarefa!";
+                    log("Erro: Data da subtarefa posterior à tarefa");
+                    return false;
+                }
+                if (parentTask.priority !== undefined && newPriority > parentTask.priority) {
+                    document.getElementById('error').textContent = "Prioridade da subtarefa não pode ser maior que a da tarefa!";
+                    log("Erro: Prioridade da subtarefa maior que a tarefa");
+                    return false;
+                }
+                return true;
+            };
+
+            if (editingSubtask) {
+                const { parentKey, path, index } = editingSubtask;
+                const taskRef = ref(db, `tasks/${parentKey}`);
+                log(`Editando subtarefa: parentKey=${parentKey}, path=${path}, index=${index}`);
+                onValue(taskRef, (snapshot) => {
+                    const task = snapshot.val();
+                    const subtasks = path ? getNestedSubtasks(task, path) : task.subtasks;
+                    const parentTask = path ? getParentTask(task, path) : task;
+                    if (!validateSubtaskConstraints(parentTask, dueDate, priority)) return;
+
+                    subtasks[index] = {
+                        text: taskText,
+                        dueDate: dueDate,
+                        priority: Math.min(Math.max(priority, 1), 1000),
+                        notes: subtasks[index].notes || "",
+                        completed: subtasks[index].completed || false,
+                        subtasks: subtasks[index].subtasks || [],
+                        expanded: subtasks[index].expanded || false
+                    };
+                    log(`Subtarefa atualizada: ${JSON.stringify(subtasks[index])}`);
+                    update(taskRef, task).then(() => {
+                        document.getElementById('success').textContent = "Subtarefa atualizada com sucesso!";
+                        const fullPath = path ? `${path}/${index}` : `${index}`;
+                        scrollToTarget(parentKey, fullPath);
+                        resetForm();
+                    }).catch((error) => {
+                        document.getElementById('error').textContent = "Erro ao atualizar subtarefa: " + error.message;
+                        log(`Erro ao atualizar subtarefa: ${error.message}`);
+                    });
+                }, { onlyOnce: true });
+            } else if (addingSubtaskToKey) {
+                const { key, path } = addingSubtaskToKey;
+                const taskRef = ref(db, `tasks/${key}`);
+                log(`Adicionando subtarefa: key=${key}, path=${path}`);
+                onValue(taskRef, (snapshot) => {
+                    const task = snapshot.val();
+                    if (!task) {
+                        document.getElementById('error').textContent = "Tarefa pai não encontrada!";
+                        log(`Erro: Tarefa pai não encontrada para key=${key}`);
+                        return;
+                    }
+
+                    const parentTask = path ? getParentTask(task, path) : task;
+                    if (!validateSubtaskConstraints(parentTask, dueDate, priority)) return;
+
+                    const newSubtask = {
+                        text: taskText,
+                        dueDate: dueDate,
+                        priority: Math.min(Math.max(priority, 1), 1000),
+                        notes: "",
+                        completed: false,
+                        subtasks: [],
+                        expanded: false
+                    };
+
+                    let newIndex;
+                    if (!path) {
+                        task.subtasks = task.subtasks || [];
+                        newIndex = task.subtasks.length;
+                        task.subtasks.push(newSubtask);
+                    } else {
+                        const parts = path.split('/').filter(p => p !== '');
+                        let current = task;
+                        for (let i = 0; i < parts.length; i++) {
+                            const index = parseInt(parts[i]);
+                            if (!current.subtasks) current.subtasks = [];
+                            if (i === parts.length - 1) {
+                                current.subtasks[index].subtasks = current.subtasks[index].subtasks || [];
+                                newIndex = current.subtasks[index].subtasks.length;
+                                current.subtasks[index].subtasks.push(newSubtask);
+                            } else {
+                                current = current.subtasks[index];
+                            }
+                        }
+                    }
+
+                    log(`Nova subtarefa adicionada: ${JSON.stringify(newSubtask)}`);
+                    update(taskRef, task).then(() => {
+                        document.getElementById('success').textContent = "Subtarefa adicionada com sucesso!";
+                        const newPath = path ? `${path}/${newIndex}` : `${newIndex}`;
+                        scrollToTarget(key, newPath);
+                        resetForm();
+                    }).catch((error) => {
+                        document.getElementById('error').textContent = "Erro ao adicionar subtarefa: " + error.message;
+                        log(`Erro ao adicionar subtarefa: ${error.message}`);
+                    });
+                }, { onlyOnce: true });
+            } else if (editingTaskKey) {
+                const taskRef = ref(db, `tasks/${editingTaskKey}`);
+                log(`Editando tarefa: key=${editingTaskKey}`);
+                onValue(taskRef, (snapshot) => {
+                    const currentTask = snapshot.val();
+                    const updatedTask = {
+                        text: taskText,
+                        dueDate: dueDate,
+                        priority: Math.min(Math.max(priority, 1), 1000),
+                        notes: currentTask.notes || "",
+                        completed: currentTask.completed || false,
+                        category: currentCategory,
+                        subtasks: currentTask.subtasks || [],
+                        expanded: currentTask.expanded || false
+                    };
+                    set(taskRef, updatedTask).then(() => {
+                        document.getElementById('success').textContent = "Tarefa atualizada com sucesso!";
+                        scrollToTarget(editingTaskKey);
+                        resetForm();
+                    }).catch((error) => {
+                        document.getElementById('error').textContent = "Erro ao atualizar: " + error.message;
+                        log(`Erro ao atualizar tarefa: ${error.message}`);
+                    });
+                }, { onlyOnce: true });
+            } else {
+                log("Adicionando nova tarefa");
+                push(tasksRef, {
+                    text: taskText,
+                    dueDate: dueDate,
+                    priority: Math.min(Math.max(priority, 1), 1000),
+                    notes: "",
+                    completed: false,
+                    category: currentCategory,
+                    subtasks: [],
+                    expanded: false
+                }).then((newTaskRef) => {
+                    document.getElementById('success').textContent = "Tarefa adicionada com sucesso!";
+                    scrollToTarget(newTaskRef.key);
+                    resetForm();
+                }).catch((error) => {
+                    document.getElementById('error').textContent = "Erro ao adicionar: " + error.message;
+                    log(`Erro ao adicionar tarefa: ${error.message}`);
+                });
+            }
+        }
+
+        function resetForm() {
+            document.getElementById('taskInput').value = '';
+            document.getElementById('dueDate').value = '';
+            document.getElementById('priority').value = '';
+            document.getElementById('actionButton').textContent = 'Adicionar';
+            document.getElementById('error').textContent = '';
+            editingTaskKey = null;
+            editingSubtask = null;
+            addingSubtaskToKey = null;
+            log("Formulário resetado");
+        }
+
+        function editTask(key) {
+            const taskRef = ref(db, `tasks/${key}`);
+            onValue(taskRef, (snapshot) => {
+                const task = snapshot.val();
+                document.getElementById('taskInput').value = task.text;
+                document.getElementById('dueDate').value = task.dueDate || '';
+                document.getElementById('priority').value = task.priority || '';
+                document.getElementById('actionButton').textContent = 'Salvar';
+                editingTaskKey = key;
+                scrollToInput();
+                document.getElementById('taskInput').focus();
+            }, { onlyOnce: true });
+        }
+
+        function addSubtask(key, path = '') {
+            log(`Preparando para adicionar subtarefa: parentKey=${key}, path=${path}`);
+            document.getElementById('taskInput').value = '';
+            document.getElementById('dueDate').value = '';
+            document.getElementById('priority').value = '';
+            document.getElementById('actionButton').textContent = 'Adicionar Subtarefa';
+            addingSubtaskToKey = { key, path };
+            scrollToInput();
+            document.getElementById('taskInput').focus();
+        }
+
+        function editSubtask(parentKey, path, index) {
+            const taskRef = ref(db, `tasks/${parentKey}`);
+            onValue(taskRef, (snapshot) => {
+                const task = snapshot.val();
+                const subtasks = path ? getNestedSubtasks(task, path) : task.subtasks;
+                const subtask = subtasks[index];
+                document.getElementById('taskInput').value = subtask.text;
+                document.getElementById('dueDate').value = subtask.dueDate || '';
+                document.getElementById('priority').value = subtask.priority || '';
+                document.getElementById('actionButton').textContent = 'Salvar Subtarefa';
+                editingSubtask = { parentKey, path, index };
+                scrollToInput();
+                document.getElementById('taskInput').focus();
+            }, { onlyOnce: true });
+        }
+
+        function toggleTask(key) {
+            log(`toggleTask chamado: key=${key}`);
+            const taskRef = ref(db, `tasks/${key}`);
+            onValue(taskRef, (snapshot) => {
+                const task = snapshot.val();
+                update(taskRef, { completed: !task.completed })
+                    .then(() => log(`Tarefa ${key} atualizada no Firebase: completed=${!task.completed}`))
+                    .catch(error => log(`Erro ao atualizar tarefa: ${error.message}`));
+            }, { onlyOnce: true });
+        }
+
+        function toggleSubtask(parentKey, path, subtaskIndex) {
+            log(`toggleSubtask chamado: parentKey=${parentKey}, path=${path}, subtaskIndex=${subtaskIndex}`);
+            const taskRef = ref(db, `tasks/${parentKey}`);
+            onValue(taskRef, (snapshot) => {
+                const task = snapshot.val();
+                let current = task;
+                const parts = path.split('/').filter(p => p !== '');
+                for (let i = 0; i < parts.length; i++) {
+                    const index = parseInt(parts[i]);
+                    current = current.subtasks[index];
+                }
+                const currentCompleted = current.subtasks[subtaskIndex].completed;
+                const newCompletedState = !currentCompleted;
+                current.subtasks[subtaskIndex].completed = newCompletedState;
+                update(taskRef, task)
+                    .then(() => log(`Atualização no Firebase concluída para ${parentKey}`))
+                    .catch(error => log(`Erro ao atualizar subtarefa: ${error.message}`));
+            }, { onlyOnce: true });
+        }
+
+        function deleteTask(key) {
+            if (confirm("Tem certeza que deseja excluir esta tarefa?")) {
+                remove(ref(db, `tasks/${key}`))
+                    .then(() => log(`Tarefa excluída com sucesso: ${key}`))
+                    .catch(error => log(`Erro ao excluir tarefa: ${error.message}`));
+            }
+        }
+
+        function deleteSubtask(parentKey, path, index) {
+            if (confirm("Tem certeza que deseja excluir esta subtarefa?")) {
+                const taskRef = ref(db, `tasks/${parentKey}`);
+                onValue(taskRef, (snapshot) => {
+                    const task = snapshot.val();
+                    const subtasks = path ? getNestedSubtasks(task, path) : task.subtasks;
+                    subtasks.splice(index, 1);
+                    update(taskRef, task)
+                        .then(() => log(`Subtarefa excluída com sucesso: ${parentKey}/${path}/${index}`))
+                        .catch(error => log(`Erro ao excluir subtarefa: ${error.message}`));
+                }, { onlyOnce: true });
+            }
+        }
+
+        function toggleNotes(li) {
+            const notesDiv = li.querySelector('.notes');
+            notesDiv.classList.toggle('visible');
+        }
+
+        function updateNotes(key, textarea) {
+            const taskRef = ref(db, `tasks/${key}`);
+            update(taskRef, { notes: textarea.value })
+                .then(() => log(`Notas atualizadas para tarefa: ${key}`))
+                .catch(error => log(`Erro ao atualizar notas: ${error.message}`));
+        }
+
+        function updateSubtaskNotes(parentKey, path, index, textarea) {
+            const taskRef = ref(db, `tasks/${parentKey}`);
+            onValue(taskRef, (snapshot) => {
+                const task = snapshot.val();
+                const subtasks = path ? getNestedSubtasks(task, path) : task.subtasks;
+                subtasks[index].notes = textarea.value;
+                update(taskRef, task)
+                    .then(() => log(`Notas da subtarefa atualizadas: ${parentKey}/${path}/${index}`))
+                    .catch(error => log(`Erro ao atualizar notas da subtarefa: ${error.message}`));
+            }, { onlyOnce: true });
+        }
+
+        function toggleCategoryDropdown(dropdown) {
+            const content = dropdown.querySelector('.dropdown-content');
+            content.style.display = content.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function toggleSubtasks(key, path, li) {
+            const fullPath = path ? `${key}/${path}` : key;
+            const subtasksContainer = li.querySelector('.subtasks-container');
+            const expandBtn = li.querySelector('.expand-btn');
+            const isExpanded = !subtasksContainer.classList.contains('visible');
+            if (isExpanded) {
+                subtasksContainer.classList.add('visible');
+                expandBtn.textContent = '−';
+            } else {
+                subtasksContainer.classList.remove('visible');
+                expandBtn.textContent = '+';
+            }
+            updateExpansionState(key, fullPath, isExpanded);
+        }
+
+        function changeCategory(key, newCategory) {
+            const taskRef = ref(db, `tasks/${key}`);
+            update(taskRef, { category: newCategory })
+                .then(() => log(`Categoria da tarefa ${key} alterada para ${newCategory}`))
+                .catch(error => log(`Erro ao alterar categoria: ${error.message}`));
+        }
+
+        function formatDate(date) {
+            if (!date) return 'Sem data';
+            const [year, month, day] = date.split('-');
+            return `${day}/${month}/${year}`;
+        }
+
+        function isPastDue(dueDate, completed) {
+            if (!dueDate || completed) return false;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const due = new Date(dueDate);
+            due.setHours(0, 0, 0, 0);
+            return due < today;
+        }
+
+        function isToday(dueDate) {
+            if (!dueDate) return false;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const due = new Date(dueDate);
+            due.setHours(0, 0, 0, 0);
+            return due.getTime() === today.getTime();
+        }
+
+        function isOneDayPast(dueDate) {
+            if (!dueDate) return false;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const due = new Date(dueDate);
+            due.setHours(0, 0, 0, 0);
+            const diff = (today - due) / (1000 * 60 * 60 * 24);
+            return diff === 1;
+        }
+
+        function isTwoOrMoreDaysPast(dueDate) {
+            if (!dueDate) return false;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const due = new Date(dueDate);
+            due.setHours(0, 0, 0, 0);
+            const diff = (today - due) / (1000 * 60 * 60 * 24);
+            return diff >= 2;
+        }
+
+        function setCategory(category) {
+            currentCategory = category;
+            document.querySelectorAll('.category-buttons button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`${category}Btn`).classList.add('active');
+            renderTasks();
+        }
+
+        function getEarliestDueDate(task) {
+            let earliest = task.dueDate || '9999-12-31';
+            if (task.subtasks) {
+                task.subtasks.forEach(subtask => {
+                    const subEarliest = getEarliestDueDate(subtask);
+                    if (subEarliest < earliest) earliest = subEarliest;
+                });
+            }
+            return earliest;
+        }
+
+        function shouldExpandTask(task) {
+            if (task.subtasks) {
+                return task.subtasks.some(subtask => isPastDue(subtask.dueDate, subtask.completed) || shouldExpandTask(subtask));
+            }
+            return false;
+        }
+
+        function getNestedSubtasks(task, path) {
+            const parts = path.split('/').filter(p => p !== '');
+            let current = task;
+            for (const index of parts) {
+                current = current.subtasks[parseInt(index)];
+            }
+            return current.subtasks;
+        }
+
+        function getParentTask(task, path) {
+            const parts = path.split('/').filter(p => p !== '');
+            let current = task;
+            for (let i = 0; i < parts.length - 1; i++) {
+                current = current.subtasks[parseInt(parts[i])];
+            }
+            return current;
+        }
+
+        function renderSubtasks(key, task, container, path = '', level = 1) {
+            log(`Renderizando subtarefas: key=${key}, path=${path}, level=${level}`);
+            if (!task.subtasks || task.subtasks.length === 0 || level > 4) return;
+
+            container.innerHTML = ''; // Limpar o container
+
+            const sortedSubtasks = task.subtasks.map((subtask, originalIndex) => ({ subtask, originalIndex }))
+                .sort((a, b) => {
+                    if (a.subtask.completed !== b.subtask.completed) return a.subtask.completed - b.subtask.completed;
+                    const dateA = a.subtask.dueDate || '9999-12-31';
+                    const dateB = b.subtask.dueDate || '9999-12-31';
+                    if (dateA !== dateB) return dateA.localeCompare(dateB);
+                    return b.subtask.priority - a.subtask.priority;
+                });
+
+            sortedSubtasks.forEach(({ subtask, originalIndex }) => {
+                const subLi = document.createElement('li');
+                subLi.className = `subtask-level-${level} ${subtask.completed ? 'completed' : ''}`;
+                subLi.setAttribute('data-subtask-index', originalIndex);
+                const subPath = path ? `${path}/${originalIndex}` : `${originalIndex}`;
+                const fullPath = `${key}/${subPath}`;
+                const isSubtaskBoldItalic = isPastDue(subtask.dueDate, subtask.completed);
+                const hasSubtasks = subtask.subtasks && subtask.subtasks.length > 0;
+                const isExpanded = subtask.expanded || false;
+
+                subLi.innerHTML = `
+                    <div class="task-row">
+                        ${hasSubtasks ? `<button class="expand-btn">${isExpanded ? '−' : '+'}</button>` : '<span class="expand-placeholder"></span>'}
+                        <input type="checkbox" ${subtask.completed ? 'checked' : ''} data-id="${fullPath}">
+                        <span class="task-text ${isSubtaskBoldItalic ? 'bold-italic' : ''}">${subtask.text} | Data: ${formatDate(subtask.dueDate)} | Prioridade: ${subtask.priority}</span>
+                        <button class="edit-btn">Editar</button>
+                        <button class="delete-btn">Excluir</button>
+                        ${level < 4 ? '<button class="subtask-btn">Subtarefa</button>' : ''}
+                        ${subtask.notes && subtask.notes.trim() !== '' ? '<span class="has-notes">(Contém Nota)</span>' : ''}
+                    </div>
+                    <div class="notes">
+                        <textarea rows="3">${subtask.notes || ''}</textarea>
+                    </div>
+                    <div class="subtasks-container ${isExpanded ? 'visible' : ''}"></div>
+                `;
+
+                const subtasksContainer = subLi.querySelector('.subtasks-container');
+                if (hasSubtasks) {
+                    renderSubtasks(key, subtask, subtasksContainer, subPath, level + 1);
+                }
+                container.appendChild(subLi);
+
+                subLi.querySelector('.task-text').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleNotes(subLi);
+                });
+                if (hasSubtasks) {
+                    subLi.querySelector('.expand-btn').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleSubtasks(key, subPath, subLi);
+                    });
+                }
+                subLi.querySelector('.edit-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    editSubtask(key, path, originalIndex);
+                });
+                subLi.querySelector('.delete-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteSubtask(key, path, originalIndex);
+                });
+                if (level < 4) {
+                    const subtaskBtn = subLi.querySelector('.subtask-btn');
+                    if (subtaskBtn) {
+                        subtaskBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            addSubtask(key, subPath);
+                        });
+                    }
+                }
+                const notesIndicator = subLi.querySelector('.has-notes');
+                if (notesIndicator) {
+                    notesIndicator.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleNotes(subLi);
+                    });
+                }
+                subLi.querySelector('textarea').addEventListener('change', (e) => updateSubtaskNotes(key, path, originalIndex, e.target));
+                subLi.querySelector('textarea').addEventListener('click', (e) => e.stopPropagation());
+
+                const checkbox = subLi.querySelector('input[type="checkbox"]');
+                checkbox.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const id = checkbox.getAttribute('data-id');
+                    log(`Checkbox clicado: ID=${id}, Nível=${id.split('/').length - 2}`);
+                    const parts = id.split('/').filter(p => p !== '');
+                    const key = parts[0];
+                    const path = parts.slice(1, -1).join('/');
+                    const index = parseInt(parts[parts.length - 1]);
+                    toggleSubtask(key, path, index);
+                });
+            });
+        }
+
+        function renderTasks() {
+            onValue(tasksRef, (snapshot) => {
+                const tasks = snapshot.val();
+                const taskList = document.getElementById('taskList');
+                taskList.innerHTML = tasks ? '' : '<li>Sem tarefas ainda.</li>';
+                const taskArray = Object.entries(tasks || {})
+                    .filter(([_, task]) => currentCategory === 'all' || task.category === currentCategory)
+                    .sort((a, b) => {
+                        if (a[1].completed !== b[1].completed) return a[1].completed - b[1].completed;
+                        const earliestDateA = getEarliestDueDate(a[1]);
+                        const earliestDateB = getEarliestDueDate(b[1]);
+                        if (earliestDateA !== earliestDateB) return earliestDateA.localeCompare(earliestDateB);
+                        return b[1].priority - a[1].priority;
+                    });
+
+                taskArray.forEach(([key, task]) => {
+                    const li = document.createElement('li');
+                    li.setAttribute('data-key', key);
+                    li.className = task.completed ? 'completed' : '';
+                    const isTaskBoldItalic = isPastDue(task.dueDate, task.completed);
+                    const hasSubtasks = task.subtasks && task.subtasks.length > 0;
+                    const isExpanded = task.expanded || false;
+
+                    li.innerHTML = `
+                        <div class="task-row">
+                            ${hasSubtasks ? `<button class="expand-btn">${isExpanded ? '−' : '+'}</button>` : '<span class="expand-placeholder"></span>'}
+                            <input type="checkbox" ${task.completed ? 'checked' : ''} data-id="${key}">
+                            <span class="task-text ${isTaskBoldItalic ? 'bold-italic' : ''}">${task.text} | Data: ${formatDate(task.dueDate)} | Prioridade: ${task.priority}</span>
+                            <div class="category-dropdown">
+                                <button class="category-btn">Categoria</button>
+                                <div class="dropdown-content">
+                                    <button class="dropdown-item" data-category="mainProjects">Projetos Principais</button>
+                                    <button class="dropdown-item" data-category="proposed">Proj. Propostos</button>
+                                    <button class="dropdown-item" data-category="inProgress">Proj. em Andamento</button>
+                                    <button class="dropdown-item" data-category="future">Proj. Futuros</button>
+                                </div>
+                            </div>
+                            <button class="edit-btn">Editar</button>
+                            <button class="delete-btn">Excluir</button>
+                            <button class="subtask-btn">Subtarefa</button>
+                            ${task.notes && task.notes.trim() !== '' ? '<span class="has-notes">(Contém Nota)</span>' : ''}
+                        </div>
+                        <div class="notes">
+                            <textarea rows="3">${task.notes || ''}</textarea>
+                        </div>
+                        <div class="subtasks-container ${isExpanded ? 'visible' : ''}"></div>
+                    `;
+
+                    const subtasksContainer = li.querySelector('.subtasks-container');
+                    if (hasSubtasks) {
+                        renderSubtasks(key, task, subtasksContainer);
+                    }
+                    taskList.appendChild(li);
+
+                    li.querySelector('.task-text').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleNotes(li);
+                    });
+                    if (hasSubtasks) {
+                        li.querySelector('.expand-btn').addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            toggleSubtasks(key, '', li);
+                        });
+                    }
+                    const categoryBtn = li.querySelector('.category-btn');
+                    categoryBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleCategoryDropdown(categoryBtn.parentElement);
+                    });
+                    li.querySelectorAll('.dropdown-item').forEach(item => {
+                        item.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const newCategory = item.getAttribute('data-category');
+                            changeCategory(key, newCategory);
+                            item.closest('.dropdown-content').style.display = 'none';
+                        });
+                    });
+                    li.querySelector('.edit-btn').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        editTask(key);
+                    });
+                    li.querySelector('.delete-btn').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        deleteTask(key);
+                    });
+                    li.querySelector('.subtask-btn').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        addSubtask(key);
+                    });
+                    const notesIndicator = li.querySelector('.has-notes');
+                    if (notesIndicator) {
+                        notesIndicator.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            toggleNotes(li);
+                        });
+                    }
+                    li.querySelector('textarea').addEventListener('change', (e) => updateNotes(key, e.target));
+                    li.querySelector('textarea').addEventListener('click', (e) => e.stopPropagation());
+
+                    const checkbox = li.querySelector('input[type="checkbox"]');
+                    checkbox.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const id = checkbox.getAttribute('data-id');
+                        log(`Checkbox clicado: ID=${id}, Nível=0`);
+                        toggleTask(id);
+                    });
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('.category-dropdown')) {
+                        document.querySelectorAll('.dropdown-content').forEach(content => content.style.display = 'none');
+                    }
+                });
+
+                if (targetTaskKey) {
+                    scrollToTarget(targetTaskKey);
+                    targetTaskKey = null;
+                }
+            });
+        }
+
+        setCategory('mainProjects');
+        document.getElementById('mainProjectsBtn').addEventListener('click', () => setCategory('mainProjects'));
+        document.getElementById('proposedBtn').addEventListener('click', () => setCategory('proposed'));
+        document.getElementById('inProgressBtn').addEventListener('click', () => setCategory('inProgress'));
+        document.getElementById('futureBtn').addEventListener('click', () => setCategory('future'));
+        document.getElementById('allBtn').addEventListener('click', () => setCategory('all'));
+        document.getElementById('actionButton').addEventListener('click', () => saveTask(editingSubtask ? editingSubtask.parentKey : (addingSubtaskToKey ? addingSubtaskToKey.key : editingTaskKey)));
+        document.getElementById('taskInput').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                log("Enter pressionado");
+                saveTask(editingSubtask ? editingSubtask.parentKey : (addingSubtaskToKey ? addingSubtaskToKey.key : editingTaskKey));
+            }
+        });
+        document.getElementById('dueDate').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveTask(editingSubtask ? editingSubtask.parentKey : (addingSubtaskToKey ? addingSubtaskToKey.key : editingTaskKey));
+            }
+        });
+        document.getElementById('priority').addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveTask(editingSubtask ? editingSubtask.parentKey : (addingSubtaskToKey ? addingSubtaskToKey.key : editingTaskKey));
+            }
+        });
+    </script>
+</body>
+</html>
