@@ -31,8 +31,11 @@
         .header { display: flex; justify-content: space-between; align-items: center; }
         h1 { margin: 0; color: #ffffff; }
         .category-buttons { display: flex; gap: 10px; align-items: center; }
+        input, button { font-size: 18px; padding: 10px; margin: 5px; background: #333; color: #e0e0e0; border: 1px solid #555; }
         #taskInput { width: 600px; }
+        button:hover { background: #555; }
         button.active { background: #555; font-weight: bold; }
+        .small-btn { font-size: 14px; padding: 5px; width: 30px; height: 30px; line-height: 20px; text-align: center; }
         ul { list-style-type: none; padding: 0; }
         li { font-size: 18px; margin: 10px 0; background: #2a2a2a; padding: 10px; border-radius: 5px; cursor: pointer; }
         .task-row { display: flex; align-items: center; gap: 10px; }
@@ -49,6 +52,9 @@
         .dropdown-content { display: none; position: absolute; background-color: #333; min-width: 160px; box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); z-index: 1; border-radius: 5px; }
         .dropdown-content button { width: 100%; text-align: left; padding: 10px; margin: 0; }
         .dropdown-content button:hover { background-color: #555; }
+        .date-today { color: #ffff00; }
+        .date-one-day-past { color: #1e90ff; }
+        .date-past { color: #ff0000; }
         .subtask-level-1 { margin-left: 60px; background: #3a3a3a; }
         .subtask-level-2 { margin-left: 120px; background: #4a4a4a; }
         .subtask-level-3 { margin-left: 180px; background: #5a5a5a; }
@@ -62,8 +68,7 @@
         #txtNote { display: none; margin: 10px 0; padding: 10px; background: #333; border-radius: 5px; width: 100%; min-height: 100px; resize: vertical; }
         .level-btn { font-size: 14px; padding: 5px; width: 20px; height: 20px; line-height: 10px; text-align: center; cursor: pointer; }
         .level-btn:disabled { opacity: 0.5; cursor: not-allowed; }
-        .small-btn { font-size: 14px; padding: 5px; width: 30px; height: 30px; line-height: 20px; text-align: center; }
-        #deleteCategoryBtn, #sendToComplexBtn { display: none; }
+        #deleteCategoryBtn, #sendToComplexBtn, #shareBtn { display: none; }
         #backBtn { display: none; }
     </style>
 </head>
@@ -103,6 +108,7 @@
             <button id="actionButton">Adicionar</button>
             <button id="txtBtn">TXT</button>
             <button id="searchBtn" class="small-btn">🔍</button>
+            <button id="shareBtn" class="small-btn">↻</button>
             <button id="sendToComplexBtn" class="small-btn">⍟</button>
             <button id="backBtn">Voltar</button>
         </div>
@@ -151,7 +157,6 @@
         let editingSubtask = null;
         let addingSubtaskToKey = null;
         let currentCategory = 'mainProjects';
-        let targetTaskKey = null;
         let currentUserEmail = null;
 
         function log(message) {
@@ -175,8 +180,8 @@
         const usersList = document.getElementById('usersList');
         const deleteCategoryBtn = document.getElementById('deleteCategoryBtn');
         const sendToComplexBtn = document.getElementById('sendToComplexBtn');
+        const shareBtn = document.getElementById('shareBtn');
 
-        // Forçar logout inicial para evitar login automático
         signOut(auth).then(() => {
             log("Logout inicial realizado para garantir tela de login");
             loginScreen.style.display = 'flex';
@@ -191,9 +196,15 @@
                     registerBtn.style.display = 'inline-block';
                     deleteCategoryBtn.style.display = 'inline-block';
                     sendToComplexBtn.style.display = 'inline-block';
+                    shareBtn.style.display = 'inline-block'; // Botão "↻" visível apenas para este usuário
                     setTimeout(() => {
                         registerBtn.style.display = 'none';
                     }, 3000);
+                } else {
+                    registerBtn.style.display = 'none';
+                    deleteCategoryBtn.style.display = 'none';
+                    sendToComplexBtn.style.display = 'none';
+                    shareBtn.style.display = 'none'; // Botão "↻" oculto para outros usuários
                 }
                 loginScreen.style.display = 'none';
                 appScreen.style.display = 'block';
@@ -205,6 +216,7 @@
                 appScreen.style.display = 'none';
                 deleteCategoryBtn.style.display = 'none';
                 sendToComplexBtn.style.display = 'none';
+                shareBtn.style.display = 'none'; // Botão "↻" oculto ao deslogar
             }
         });
 
@@ -248,7 +260,7 @@
                     const user = userCredential.user;
                     set(ref(dbShared, `users/${user.uid}`), {
                         email: newEmail,
-                        password: newPassword // Armazenar senha em texto simples apenas para demonstração
+                        password: newPassword
                     }).then(() => {
                         messageDiv.textContent = "Usuário cadastrado com sucesso!";
                         registerContainer.style.display = 'none';
@@ -377,7 +389,7 @@
                             return rootElement;
                         }
 
-                        const targetSubtask = subtasksContainer.querySelector(`li[data-subtask-index="${subtaskIndex}"]`);
+                        const targetSubtask = subtasksContainer.querySelector(`li[data-subtask-path="${currentPath}/${subtaskIndex}"]`);
                         if (!targetSubtask) {
                             log(`Erro: Subtarefa não encontrada no path=${currentPath}/${subtaskIndex}`);
                             return null;
@@ -661,16 +673,25 @@
             document.getElementById('priority').value = '';
             document.getElementById('actionButton').textContent = 'Adicionar';
             document.getElementById('error').textContent = '';
+            document.getElementById('txtNote').style.display = 'none';
+            document.getElementById('backBtn').style.display = 'none';
             editingTaskKey = null;
             editingSubtask = null;
             addingSubtaskToKey = null;
+            renderTasks();
             log("Formulário resetado");
         }
 
         function editTask(key) {
             const taskRef = ref(dbShared, `tasks/${key}`);
+            log(`editTask chamado para key=${key}`);
             onValue(taskRef, (snapshot) => {
                 const task = snapshot.val();
+                if (!task) {
+                    log(`Erro: Tarefa com key=${key} não encontrada`);
+                    document.getElementById('error').textContent = "Tarefa não encontrada!";
+                    return;
+                }
                 document.getElementById('taskInput').value = task.text;
                 document.getElementById('dueDate').value = task.dueDate || '';
                 document.getElementById('priority').value = task.priority || '';
@@ -678,6 +699,7 @@
                 editingTaskKey = key;
                 scrollToInput();
                 document.getElementById('taskInput').focus();
+                log(`Dados carregados para edição: text="${task.text}", dueDate="${task.dueDate}", priority=${task.priority}`);
             }, { onlyOnce: true });
         }
 
@@ -694,6 +716,7 @@
 
         function editSubtask(parentKey, path, index) {
             const taskRef = ref(dbShared, `tasks/${parentKey}`);
+            log(`editSubtask chamado: parentKey=${parentKey}, path=${path}, index=${index}`);
             onValue(taskRef, (snapshot) => {
                 const task = snapshot.val();
                 const subtasks = path ? getNestedSubtasks(task, path) : task.subtasks;
@@ -705,6 +728,7 @@
                 editingSubtask = { parentKey, path, index };
                 scrollToInput();
                 document.getElementById('taskInput').focus();
+                log(`Dados da subtarefa carregados: text="${subtask.text}", dueDate="${subtask.dueDate}", priority=${subtask.priority}`);
             }, { onlyOnce: true });
         }
 
@@ -724,17 +748,36 @@
             const taskRef = ref(dbShared, `tasks/${parentKey}`);
             onValue(taskRef, (snapshot) => {
                 const task = snapshot.val();
-                let current = task;
-                const parts = path.split('/').filter(p => p !== '');
-                for (let i = 0; i < parts.length; i++) {
-                    const index = parseInt(parts[i]);
-                    current = current.subtasks[index];
+                let subtasks = task.subtasks || [];
+
+                if (!path) {
+                    if (!subtasks[subtaskIndex]) {
+                        log(`Erro: Subtarefa no índice ${subtaskIndex} não encontrada em ${parentKey}`);
+                        return;
+                    }
+                    subtasks[subtaskIndex].completed = !subtasks[subtaskIndex].completed;
+                } else {
+                    const pathParts = path.split('/').map(Number);
+                    let currentLevel = subtasks;
+                    for (let i = 0; i < pathParts.length; i++) {
+                        if (!currentLevel[pathParts[i]]) {
+                            log(`Erro: Caminho inválido em ${parentKey}/${path} no índice ${pathParts[i]}`);
+                            return;
+                        }
+                        if (i === pathParts.length - 1) {
+                            if (!currentLevel[pathParts[i]].subtasks || !currentLevel[pathParts[i]].subtasks[subtaskIndex]) {
+                                log(`Erro: Subtarefa no índice ${subtaskIndex} não encontrada em ${parentKey}/${path}`);
+                                return;
+                            }
+                            currentLevel[pathParts[i]].subtasks[subtaskIndex].completed = !currentLevel[pathParts[i]].subtasks[subtaskIndex].completed;
+                        } else {
+                            currentLevel = currentLevel[pathParts[i]].subtasks;
+                        }
+                    }
                 }
-                const currentCompleted = current.subtasks[subtaskIndex].completed;
-                const newCompletedState = !currentCompleted;
-                current.subtasks[subtaskIndex].completed = newCompletedState;
-                update(taskRef, task)
-                    .then(() => log(`Atualização no Firebase concluída para ${parentKey}`))
+
+                update(taskRef, { subtasks })
+                    .then(() => log(`Subtarefa atualizada no Firebase: ${parentKey}/${path ? path + '/' : ''}${subtaskIndex}`))
                     .catch(error => log(`Erro ao atualizar subtarefa: ${error.message}`));
             }, { onlyOnce: true });
         }
@@ -967,10 +1010,46 @@
             }, { onlyOnce: true });
         }
 
-        function formatDate(date) {
-            if (!date) return 'Sem data';
-            const [year, month, day] = date.split('-');
-            return `${day}/${month}/${year}`;
+        function formatDate(dateStr) {
+            if (!dateStr) return 'Sem data';
+            const [year, month, day] = dateStr.split('-');
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const due = new Date(year, month - 1, day);
+            due.setHours(0, 0, 0, 0);
+            const oneDayMs = 24 * 60 * 60 * 1000;
+            let className = '';
+
+            log(`Formatando data: Hoje=${today.toLocaleDateString()}, Due=${due.toLocaleDateString()}`);
+
+            if (due.getTime() === today.getTime()) {
+                className = 'date-today';
+            } else if (due.getTime() === today.getTime() + oneDayMs) {
+                className = 'date-one-day-past';
+            } else if (due.getTime() <= today.getTime() - oneDayMs) {
+                className = 'date-past';
+            }
+
+            return `<span class="${className}">${day}/${month}/${year}</span>`;
+        }
+
+        function isToday(dueDate) {
+            if (!dueDate) return false;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const due = new Date(dueDate);
+            due.setHours(0, 0, 0, 0);
+            return due.getTime() === today.getTime();
+        }
+
+        function isTomorrow(dueDate) {
+            if (!dueDate) return false;
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const due = new Date(dueDate);
+            due.setHours(0, 0, 0, 0);
+            const oneDayMs = 24 * 60 * 60 * 1000;
+            return due.getTime() === today.getTime() + oneDayMs;
         }
 
         function isPastDue(dueDate, completed) {
@@ -979,7 +1058,7 @@
             today.setHours(0, 0, 0, 0);
             const due = new Date(dueDate);
             due.setHours(0, 0, 0, 0);
-            return due < today;
+            return due.getTime() < today.getTime();
         }
 
         function setCategory(category) {
@@ -987,17 +1066,6 @@
             document.querySelectorAll('.category-buttons button').forEach(btn => btn.classList.remove('active'));
             document.getElementById(`${category}Btn`).classList.add('active');
             renderTasks();
-        }
-
-        function getEarliestDueDate(task) {
-            let earliest = task.dueDate || '9999-12-31';
-            if (task.subtasks) {
-                task.subtasks.forEach(subtask => {
-                    const subEarliest = getEarliestDueDate(subtask);
-                    if (subEarliest < earliest) earliest = subEarliest;
-                });
-            }
-            return earliest;
         }
 
         function getNestedSubtasks(task, path) {
@@ -1059,16 +1127,16 @@
                     const level = path.split('/').filter(p => p !== '').length;
                     li.className = `subtask-level-${level} ${task.completed ? 'completed' : ''}`;
                     if (level === 0) li.setAttribute('data-key', key);
-                    else li.setAttribute('data-subtask-index', path.split('/').pop());
+                    else li.setAttribute('data-subtask-path', `${key}/${path}`);
                     const isBoldItalic = isPastDue(task.dueDate, task.completed);
                     const hasSubtasks = task.subtasks && task.subtasks.length > 0;
-                    const isExpanded = task.expanded || false;
+                    const isExpanded = task.expanded || isToday(task.dueDate) || isTomorrow(task.dueDate);
                     const isNotesVisible = task.notesVisible || false;
 
                     li.innerHTML = `
                         <div class="task-row">
                             ${hasSubtasks ? `<button class="expand-btn">${isExpanded ? '−' : '+'}</button>` : '<span class="expand-placeholder"></span>'}
-                            <input type="checkbox" ${task.completed ? 'checked' : ''} data-id="${key}/${path}">
+                            <input type="checkbox" ${task.completed ? 'checked' : ''} data-key="${key}" data-path="${path}">
                             <span class="task-text ${isBoldItalic ? 'bold-italic' : ''}">${task.text} | Data: ${formatDate(task.dueDate)} | Prioridade: ${task.priority}</span>
                             <button class="level-btn up-btn" ${level === 0 ? 'disabled' : ''} data-id="${key}/${path}">↑</button>
                             <button class="level-btn down-btn" data-id="${key}/${path}">↓</button>
@@ -1081,7 +1149,7 @@
                                     <button class="dropdown-item" data-category="future">Proj. Futuros</button>
                                 </div>
                             </div>
-                            <button class="edit-btn">Editar</button>
+                            <button class="edit-btn" data-key="${key}">Editar</button>
                             <button class="delete-btn">Excluir</button>
                             ${level < 4 ? '<button class="subtask-btn">Subtarefa</button>' : ''}
                             ${task.notes && task.notes.trim() !== '' ? '<span class="has-notes">(Contém Nota)</span>' : ''}
@@ -1132,7 +1200,8 @@
                     });
                     li.querySelector('.edit-btn').addEventListener('click', (e) => {
                         e.stopPropagation();
-                        level === 0 ? editTask(key) : editSubtask(key, path.split('/').slice(0, -1).join('/'), parseInt(path.split('/').pop()));
+                        const taskKey = e.target.getAttribute('data-key');
+                        level === 0 ? editTask(taskKey) : editSubtask(key, path.split('/').slice(0, -1).join('/'), parseInt(path.split('/').pop()));
                     });
                     li.querySelector('.delete-btn').addEventListener('click', (e) => {
                         e.stopPropagation();
@@ -1157,9 +1226,19 @@
                     li.querySelector('textarea').addEventListener('change', (e) => {
                         level === 0 ? updateNotes(key, e.target) : updateSubtaskNotes(key, path.split('/').slice(0, -1).join('/'), parseInt(path.split('/').pop()), e.target);
                     });
-                    li.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
+                    li.querySelector('input[type="checkbox"]').addEventListener('click', (e) => {
                         e.stopPropagation();
-                        level === 0 ? toggleTask(key) : toggleSubtask(key, path.split('/').slice(0, -1).join('/'), parseInt(path.split('/').pop()));
+                        const parentKey = e.target.getAttribute('data-key');
+                        const fullPath = e.target.getAttribute('data-path');
+                        const pathParts = fullPath.split('/').filter(p => p !== '');
+                        const subtaskIndex = parseInt(pathParts.pop()) || 0;
+                        const subPath = pathParts.join('/');
+                        log(`Checkbox clicado: parentKey=${parentKey}, subPath=${subPath}, subtaskIndex=${subtaskIndex}`);
+                        if (level === 0) {
+                            toggleTask(parentKey);
+                        } else {
+                            toggleSubtask(parentKey, subPath, subtaskIndex);
+                        }
                     });
                 };
 
@@ -1174,6 +1253,7 @@
                     log("Nenhuma correspondência encontrada na pesquisa");
                 } else {
                     document.getElementById('success').textContent = "Resultados da pesquisa exibidos!";
+                    document.getElementById('backBtn').style.display = 'inline-block';
                     log("Resultados da pesquisa renderizados com sucesso");
                 }
             }, { onlyOnce: true });
@@ -1181,25 +1261,38 @@
 
         function renderSubtasks(key, task, container, path = '', level) {
             if (task.subtasks && task.subtasks.length > 0) {
-                task.subtasks.forEach((subtask, index) => {
-                    const subtaskPath = path ? `${path}/${index}` : `${index}`;
-                    log(`Renderizando subtarefas: key=${key}, path=${subtaskPath}, level=${level}`);
+                const subtasksWithOriginalIndex = task.subtasks.map((subtask, originalIndex) => ({
+                    subtask,
+                    originalIndex
+                }));
+
+                subtasksWithOriginalIndex.sort((a, b) => {
+                    const dateA = a.subtask.dueDate || '9999-12-31';
+                    const dateB = b.subtask.dueDate || '9999-12-31';
+                    if (dateA !== dateB) return dateA.localeCompare(dateB);
+                    return b.subtask.priority - a.subtask.priority;
+                });
+
+                subtasksWithOriginalIndex.forEach(({ subtask, originalIndex }) => {
+                    const subtaskPath = path ? `${path}/${originalIndex}` : `${originalIndex}`;
+                    log(`Renderizando subtarefa: key=${key}, path=${subtaskPath}, level=${level}, text="${subtask.text}", priority=${subtask.priority}, originalIndex=${originalIndex}`);
                     const li = document.createElement('li');
                     li.className = `subtask-level-${level} ${subtask.completed ? 'completed' : ''}`;
-                    li.setAttribute('data-subtask-index', index);
+                    li.setAttribute('data-subtask-path', `${key}/${subtaskPath}`);
                     const isBoldItalic = isPastDue(subtask.dueDate, subtask.completed);
                     const hasSubtasks = subtask.subtasks && subtask.subtasks.length > 0;
-                    const isExpanded = subtask.expanded || false;
+                    const shouldExpand = isToday(subtask.dueDate) || isTomorrow(subtask.dueDate);
+                    const isExpanded = subtask.expanded || shouldExpand;
                     const isNotesVisible = subtask.notesVisible || false;
 
                     li.innerHTML = `
                         <div class="task-row">
                             ${hasSubtasks ? `<button class="expand-btn">${isExpanded ? '−' : '+'}</button>` : '<span class="expand-placeholder"></span>'}
-                            <input type="checkbox" ${subtask.completed ? 'checked' : ''} data-id="${key}/${subtaskPath}">
+                            <input type="checkbox" ${subtask.completed ? 'checked' : ''} data-key="${key}" data-path="${subtaskPath}">
                             <span class="task-text ${isBoldItalic ? 'bold-italic' : ''}">${subtask.text} | Data: ${formatDate(subtask.dueDate)} | Prioridade: ${subtask.priority}</span>
                             <button class="level-btn up-btn" data-id="${key}/${subtaskPath}">↑</button>
                             <button class="level-btn down-btn" data-id="${key}/${subtaskPath}">↓</button>
-                            <button class="edit-btn">Editar</button>
+                            <button class="edit-btn" data-key="${key}" data-path="${subtaskPath}">Editar</button>
                             <button class="delete-btn">Excluir</button>
                             ${level < 4 ? '<button class="subtask-btn">Subtarefa</button>' : ''}
                             ${subtask.notes && subtask.notes.trim() !== '' ? '<span class="has-notes">(Contém Nota)</span>' : ''}
@@ -1237,11 +1330,20 @@
                     });
                     li.querySelector('.edit-btn').addEventListener('click', (e) => {
                         e.stopPropagation();
-                        editSubtask(key, path, index);
+                        const parentKey = e.target.getAttribute('data-key');
+                        const fullPath = e.target.getAttribute('data-path');
+                        const pathParts = fullPath.split('/').filter(p => p !== '');
+                        const subIndex = parseInt(pathParts.pop());
+                        const subPath = pathParts.join('/');
+                        log(`Botão Editar clicado: parentKey=${parentKey}, subPath=${subPath}, subIndex=${subIndex}`);
+                        editSubtask(parentKey, subPath, subIndex);
                     });
                     li.querySelector('.delete-btn').addEventListener('click', (e) => {
                         e.stopPropagation();
-                        deleteSubtask(key, path, index);
+                        const pathParts = subtaskPath.split('/').filter(p => p !== '');
+                        const subIndex = parseInt(pathParts.pop());
+                        const subPath = pathParts.join('/');
+                        deleteSubtask(key, subPath, subIndex);
                     });
                     if (level < 4) {
                         const subtaskBtn = li.querySelector('.subtask-btn');
@@ -1260,264 +1362,295 @@
                         });
                     }
                     li.querySelector('textarea').addEventListener('change', (e) => {
-                        updateSubtaskNotes(key, path, index, e.target);
+                        const pathParts = subtaskPath.split('/').filter(p => p !== '');
+                        const subIndex = parseInt(pathParts.pop());
+                        const subPath = pathParts.join('/');
+                        updateSubtaskNotes(key, subPath, subIndex, e.target);
                     });
-                    li.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
+                    li.querySelector('input[type="checkbox"]').addEventListener('click', (e) => {
                         e.stopPropagation();
-                        toggleSubtask(key, path, index);
+                        const parentKey = e.target.getAttribute('data-key');
+                        const fullPath = e.target.getAttribute('data-path');
+                        const pathParts = fullPath.split('/').filter(p => p !== '');
+                        const subtaskIndex = parseInt(pathParts.pop());
+                        const subPath = pathParts.join('/');
+                        log(`Checkbox clicado: parentKey=${parentKey}, subPath=${subPath}, subtaskIndex=${subtaskIndex}`);
+                        toggleSubtask(parentKey, subPath, subtaskIndex);
                     });
                 });
             }
         }
 
         function renderTasks() {
-            onValue(tasksRefShared, (snapshot) => {
-                const tasks = snapshot.val();
-                const taskList = document.getElementById('taskList');
-                taskList.innerHTML = '';
+    onValue(tasksRefShared, (snapshot) => {
+        const tasks = snapshot.val();
+        const taskList = document.getElementById('taskList');
+        taskList.innerHTML = '';
 
-                if (!tasks) {
-                    taskList.innerHTML = '<li>Nenhuma tarefa encontrada.</li>';
-                    return;
-                }
+        if (!tasks) {
+            taskList.innerHTML = '<li>Nenhuma tarefa encontrada.</li>';
+            return;
+        }
 
-                const taskArray = Object.entries(tasks)
-                    .filter(([_, task]) => currentCategory === 'all' || task.category === currentCategory)
-                    .sort((a, b) => {
-                        if (a[1].completed !== b[1].completed) return a[1].completed - b[1].completed;
-                        const dateA = getEarliestDueDate(a[1]);
-                        const dateB = getEarliestDueDate(b[1]);
-                        if (dateA !== dateB) return dateA.localeCompare(dateB);
-                        return b[1].priority - a[1].priority;
-                    });
+        const taskArray = Object.entries(tasks)
+            .filter(([_, task]) => currentCategory === 'all' || task.category === currentCategory)
+            .sort((a, b) => {
+                if (a[1].completed !== b[1].completed) return a[1].completed - b[1].completed;
+                const dateA = a[1].dueDate || '9999-12-31';
+                const dateB = b[1].dueDate || '9999-12-31';
+                if (dateA !== dateB) return dateA.localeCompare(dateB);
+                return b[1].priority - a[1].priority;
+            });
 
-                taskArray.forEach(([key, task]) => {
-                    const li = document.createElement('li');
-                    li.setAttribute('data-key', key);
-                    li.className = task.completed ? 'completed' : '';
-                    const isBoldItalic = isPastDue(task.dueDate, task.completed);
-                    const hasSubtasks = task.subtasks && task.subtasks.length > 0;
-                    const isExpanded = task.expanded || false;
-                    const isNotesVisible = task.notesVisible || false;
+        taskArray.forEach(([key, task]) => {
+            const li = document.createElement('li');
+            li.setAttribute('data-key', key);
+            li.className = task.completed ? 'completed' : '';
+            const isBoldItalic = isPastDue(task.dueDate, task.completed);
+            const hasSubtasks = task.subtasks && task.subtasks.length > 0;
+            const shouldExpand = isToday(task.dueDate) || isTomorrow(task.dueDate);
+            const isExpanded = task.expanded || shouldExpand;
+            const isNotesVisible = task.notesVisible || false;
 
-                    li.innerHTML = `
-                        <div class="task-row">
-                            ${hasSubtasks ? `<button class="expand-btn">${isExpanded ? '−' : '+'}</button>` : '<span class="expand-placeholder"></span>'}
-                            <input type="checkbox" ${task.completed ? 'checked' : ''} data-id="${key}">
-                            <span class="task-text ${isBoldItalic ? 'bold-italic' : ''}">${task.text} | Data: ${formatDate(task.dueDate)} | Prioridade: ${task.priority}</span>
-                            <button class="level-btn up-btn" disabled data-id="${key}">↑</button>
-                            <button class="level-btn down-btn" ${taskArray.length === 1 ? 'disabled' : ''} data-id="${key}">↓</button>
-                            <div class="category-dropdown">
-                                <button class="category-btn">Categoria</button>
-                                <div class="dropdown-content">
-                                    <button class="dropdown-item" data-category="mainProjects">Projetos Principais</button>
-                                    <button class="dropdown-item" data-category="proposed">Proj. Propostos</button>
-                                    <button class="dropdown-item" data-category="inProgress">Proj. em Andamento</button>
-                                    <button class="dropdown-item" data-category="future">Proj. Futuros</button>
-                                </div>
-                            </div>
-                            <button class="edit-btn">Editar</button>
-                            <button class="delete-btn">Excluir</button>
-                            ${hasSubtasks ? '<button class="subtask-btn">Subtarefa</button>' : '<button class="subtask-btn">Subtarefa</button>'}
-                            ${task.notes && task.notes.trim() !== '' ? '<span class="has-notes">(Contém Nota)</span>' : ''}
+            li.innerHTML = `
+                <div class="task-row">
+                    ${hasSubtasks ? `<button class="expand-btn">${isExpanded ? '−' : '+'}</button>` : '<span class="expand-placeholder"></span>'}
+                    <input type="checkbox" ${task.completed ? 'checked' : ''} data-key="${key}" data-path="">
+                    <span class="task-text ${isBoldItalic ? 'bold-italic' : ''}">${task.text} | Data: ${formatDate(task.dueDate)} | Prioridade: ${task.priority}</span>
+                    <button class="level-btn up-btn" disabled data-id="${key}">↑</button>
+                    <button class="level-btn down-btn" ${taskArray.length === 1 ? 'disabled' : ''} data-id="${key}">↓</button>
+                    <div class="category-dropdown">
+                        <button class="category-btn">Categoria</button>
+                        <div class="dropdown-content">
+                            <button class="dropdown-item" data-category="mainProjects">Projetos Principais</button>
+                            <button class="dropdown-item" data-category="proposed">Proj. Propostos</button>
+                            <button class="dropdown-item" data-category="inProgress">Proj. em Andamento</button>
+                            <button class="dropdown-item" data-category="future">Proj. Futuros</button>
                         </div>
-                        <div class="notes ${isNotesVisible ? 'visible' : ''}">
-                            <textarea rows="3">${task.notes || ''}</textarea>
-                        </div>
-                        <div class="subtasks-container ${isExpanded ? 'visible' : ''}"></div>
-                    `;
+                    </div>
+                    <button class="edit-btn" data-key="${key}">Editar</button>
+                    <button class="delete-btn">Excluir</button>
+                    ${hasSubtasks ? '<button class="subtask-btn">Subtarefa</button>' : '<button class="subtask-btn">Subtarefa</button>'}
+                    ${task.notes && task.notes.trim() !== '' ? '<span class="has-notes">(Contém Nota)</span>' : ''}
+                </div>
+                <div class="notes ${isNotesVisible ? 'visible' : ''}">
+                    <textarea rows="3">${task.notes || ''}</textarea>
+                </div>
+                <div class="subtasks-container ${isExpanded ? 'visible' : ''}"></div>
+            `;
 
-                    if (hasSubtasks) {
-                        const subtasksContainer = li.querySelector('.subtasks-container');
-                        renderSubtasks(key, task, subtasksContainer, '', 1);
-                    }
+            if (hasSubtasks) {
+                const subtasksContainer = li.querySelector('.subtasks-container');
+                renderSubtasks(key, task, subtasksContainer, '', 1);
+            }
 
-                    taskList.appendChild(li);
+            taskList.appendChild(li);
 
-                    li.querySelector('.task-text').addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        toggleNotes(li, key);
-                    });
-                    if (hasSubtasks) {
-                        li.querySelector('.expand-btn').addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            toggleSubtasks(key, '', li);
-                        });
-                    }
-                    li.querySelector('.down-btn').addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        moveLevelDown(key);
-                    });
-                    const categoryBtn = li.querySelector('.category-btn');
-                    categoryBtn.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        toggleCategoryDropdown(categoryBtn.parentElement);
-                    });
-                    li.querySelectorAll('.dropdown-item').forEach(item => {
-                        item.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            const newCategory = item.getAttribute('data-category');
-                            changeCategory(key, newCategory);
-                            item.closest('.dropdown-content').style.display = 'none';
-                        });
-                    });
-                    li.querySelector('.edit-btn').addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        editTask(key);
-                    });
-                    li.querySelector('.delete-btn').addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        deleteTask(key);
-                    });
-                    const subtaskBtn = li.querySelector('.subtask-btn');
-                    if (subtaskBtn) {
-                        subtaskBtn.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            addSubtask(key);
-                        });
-                    }
-                    const notesIndicator = li.querySelector('.has-notes');
-                    if (notesIndicator) {
-                        notesIndicator.addEventListener('click', (e) => {
-                            e.stopPropagation();
-                            toggleNotes(li, key);
-                        });
-                    }
-                    li.querySelector('textarea').addEventListener('change', (e) => {
-                        updateNotes(key, e.target);
-                    });
-                    li.querySelector('input[type="checkbox"]').addEventListener('change', (e) => {
-                        e.stopPropagation();
-                        toggleTask(key);
-                    });
+            li.querySelector('.task-text').addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleNotes(li, key);
+            });
+            if (hasSubtasks) {
+                li.querySelector('.expand-btn').addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleSubtasks(key, '', li);
+                });
+            }
+            li.querySelector('.up-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                moveLevelUp(key);
+            });
+            li.querySelector('.down-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                moveLevelDown(key);
+            });
+            const categoryBtn = li.querySelector('.category-btn');
+            categoryBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleCategoryDropdown(categoryBtn.parentElement);
+            });
+            li.querySelectorAll('.dropdown-item').forEach(item => {
+                item.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const newCategory = item.getAttribute('data-category');
+                    changeCategory(key, newCategory);
+                    item.closest('.dropdown-content').style.display = 'none';
                 });
             });
-        }
-
-        function exportToTxt() {
-            onValue(tasksRefShared, (snapshot) => {
-                const tasks = snapshot.val();
-                let txtContent = '';
-                const processTask = (task, indent = '') => {
-                    txtContent += `${indent}${task.completed ? '[x]' : '[ ]'} ${task.text} | Data: ${formatDate(task.dueDate)} | Prioridade: ${task.priority}\n`;
-                    if (task.notes) txtContent += `${indent}  Notas: ${task.notes}\n`;
-                    if (task.subtasks) {
-                        task.subtasks.forEach(subtask => processTask(subtask, indent + '  '));
-                    }
-                };
-
-                if (tasks) {
-                    Object.values(tasks)
-                        .filter(task => currentCategory === 'all' || task.category === currentCategory)
-                        .sort((a, b) => {
-                            if (a.completed !== b.completed) return a.completed - b.completed;
-                            const dateA = getEarliestDueDate(a);
-                            const dateB = getEarliestDueDate(b);
-                            if (dateA !== dateB) return dateA.localeCompare(dateB);
-                            return b.priority - a.priority;
-                        })
-                        .forEach(task => processTask(task));
-                }
-
-                const txtArea = document.getElementById('txtNote');
-                txtArea.value = txtContent || 'Nenhuma tarefa para exibir.';
-                txtArea.style.display = 'block';
-                txtArea.focus();
-                txtArea.select();
-            }, { onlyOnce: true });
-        }
-
-        function deleteCategoryTasks() {
-            if (!confirm(`Tem certeza que deseja apagar todas as tarefas da categoria "${currentCategory === 'all' ? 'Todos' : currentCategory}"?`)) return;
-
-            log(`Iniciando exclusão de tarefas da categoria: ${currentCategory}`);
-            onValue(tasksRefShared, (snapshot) => {
-                const tasks = snapshot.val();
-                if (!tasks) {
-                    document.getElementById('error').textContent = "Nenhuma tarefa para apagar!";
-                    log("Erro: Nenhuma tarefa encontrada no banco");
-                    return;
-                }
-
-                const tasksToDelete = Object.entries(tasks)
-                    .filter(([_, task]) => currentCategory === 'all' || task.category === currentCategory);
-
-                if (tasksToDelete.length === 0) {
-                    document.getElementById('error').textContent = "Nenhuma tarefa na categoria atual!";
-                    log(`Erro: Nenhuma tarefa encontrada na categoria ${currentCategory}`);
-                    return;
-                }
-
-                const promises = tasksToDelete.map(([key]) => remove(ref(dbShared, `tasks/${key}`)));
-
-                Promise.all(promises)
-                    .then(() => {
-                        document.getElementById('success').textContent = `${tasksToDelete.length} tarefas apagadas com sucesso!`;
-                        log(`Categoria ${currentCategory} apagada: ${tasksToDelete.length} tarefas removidas`);
-                    })
-                    .catch(error => {
-                        document.getElementById('error').textContent = "Erro ao apagar tarefas: " + error.message;
-                        log(`Erro ao apagar categoria: ${error.message}`);
-                    });
-            }, { onlyOnce: true });
-        }
-
-        function sendToComplexTasks() {
-            log(`Iniciando envio de tarefas da categoria ${currentCategory} para Projetos Complexos`);
-            onValue(tasksRefShared, (snapshot) => {
-                const tasks = snapshot.val();
-                if (!tasks) {
-                    document.getElementById('error').textContent = "Nenhuma tarefa para enviar!";
-                    log("Erro: Nenhuma tarefa encontrada no banco");
-                    return;
-                }
-
-                const tasksToSend = Object.entries(tasks)
-                    .filter(([_, task]) => currentCategory === 'all' || task.category === currentCategory)
-                    .map(([key, task]) => ({ key, task }));
-
-                if (tasksToSend.length === 0) {
-                    document.getElementById('error').textContent = "Nenhuma tarefa na categoria atual!";
-                    log(`Erro: Nenhuma tarefa encontrada na categoria ${currentCategory}`);
-                    return;
-                }
-
-                const promises = tasksToSend.map(({ task }) => {
-                    const newTaskRef = push(tasksRefComplex);
-                    return set(newTaskRef, task).then(() => newTaskRef.key);
+            li.querySelector('.edit-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                editTask(key);
+            });
+            li.querySelector('.delete-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteTask(key);
+            });
+            const subtaskBtn = li.querySelector('.subtask-btn');
+            if (subtaskBtn) {
+                subtaskBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    addSubtask(key);
                 });
+            }
+            const notesIndicator = li.querySelector('.has-notes');
+            if (notesIndicator) {
+                notesIndicator.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    toggleNotes(li, key);
+                });
+            }
+            li.querySelector('textarea').addEventListener('change', (e) => {
+                updateNotes(key, e.target);
+            });
+            li.querySelector('input[type="checkbox"]').addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleTask(key);
+            });
+        });
+    });
+}
 
-                Promise.all(promises)
-                    .then((newKeys) => {
-                        document.getElementById('success').textContent = `${tasksToSend.length} tarefas enviadas para Projetos Complexos com sucesso!`;
-                        log(`Categoria ${currentCategory} enviada: ${tasksToSend.length} tarefas transferidas`);
-                        tasksToSend.forEach(({ key }) => remove(ref(dbShared, `tasks/${key}`)));
-                    })
-                    .catch(error => {
-                        document.getElementById('error').textContent = "Erro ao enviar tarefas: " + error.message;
-                        log(`Erro ao enviar tarefas para Projetos Complexos: ${error.message}`);
-                    });
-            }, { onlyOnce: true });
+function exportTasksToTxt() {
+    onValue(tasksRefShared, (snapshot) => {
+        const tasks = snapshot.val();
+        if (!tasks) {
+            document.getElementById('txtNote').value = "Nenhuma tarefa para exportar.";
+            document.getElementById('txtNote').style.display = 'block';
+            return;
         }
 
-        document.getElementById('actionButton').addEventListener('click', () => saveTask());
-        document.getElementById('txtBtn').addEventListener('click', exportToTxt);
-        document.getElementById('searchBtn').addEventListener('click', searchTasks);
-        document.getElementById('deleteCategoryBtn').addEventListener('click', deleteCategoryTasks);
-        document.getElementById('sendToComplexBtn').addEventListener('click', sendToComplexTasks);
-        document.getElementById('mainProjectsBtn').addEventListener('click', () => setCategory('mainProjects'));
-        document.getElementById('proposedBtn').addEventListener('click', () => setCategory('proposed'));
-        document.getElementById('inProgressBtn').addEventListener('click', () => setCategory('inProgress'));
-        document.getElementById('futureBtn').addEventListener('click', () => setCategory('future'));
-        document.getElementById('allBtn').addEventListener('click', () => setCategory('all'));
-        document.getElementById('taskInput').addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') {
-                log("Enter pressionado");
-                saveTask();
+        let txtContent = `=== Tarefas Exportadas (${currentCategory === 'all' ? 'Todas' : currentCategory}) ===\n\n`;
+        const exportSubtasks = (subtasks, level) => {
+            subtasks.forEach((subtask, index) => {
+                txtContent += `${'  '.repeat(level)}- ${subtask.text} | Data: ${subtask.dueDate || 'Sem data'} | Prioridade: ${subtask.priority || 1} | ${subtask.completed ? '[Concluída]' : ''}\n`;
+                if (subtask.notes) txtContent += `${'  '.repeat(level + 1)}Notas: ${subtask.notes}\n`;
+                if (subtask.subtasks && subtask.subtasks.length > 0) {
+                    exportSubtasks(subtask.subtasks, level + 1);
+                }
+            });
+        };
+
+        Object.entries(tasks)
+            .filter(([_, task]) => currentCategory === 'all' || task.category === currentCategory)
+            .sort((a, b) => {
+                if (a[1].completed !== b[1].completed) return a[1].completed - b[1].completed;
+                const dateA = a[1].dueDate || '9999-12-31';
+                const dateB = b[1].dueDate || '9999-12-31';
+                if (dateA !== dateB) return dateA.localeCompare(dateB);
+                return b[1].priority - a[1].priority;
+            })
+            .forEach(([_, task]) => {
+                txtContent += `- ${task.text} | Data: ${task.dueDate || 'Sem data'} | Prioridade: ${task.priority || 1} | ${task.completed ? '[Concluída]' : ''}\n`;
+                if (task.notes) txtContent += `  Notas: ${task.notes}\n`;
+                if (task.subtasks && task.subtasks.length > 0) {
+                    exportSubtasks(task.subtasks, 1);
+                }
+            });
+
+        document.getElementById('txtNote').value = txtContent;
+        document.getElementById('txtNote').style.display = 'block';
+    });
+}
+
+function deleteCategoryTasks() {
+    if (currentCategory === 'all') {
+        document.getElementById('error').textContent = "Não é possível excluir todas as categorias de uma vez!";
+        return;
+    }
+    if (confirm(`Tem certeza que deseja excluir todas as tarefas da categoria "${currentCategory}"?`)) {
+        onValue(tasksRefShared, (snapshot) => {
+            const tasks = snapshot.val();
+            if (!tasks) return;
+
+            const updates = {};
+            Object.entries(tasks).forEach(([key, task]) => {
+                if (task.category === currentCategory) {
+                    updates[key] = null;
+                }
+            });
+
+            update(tasksRefShared, updates)
+                .then(() => {
+                    document.getElementById('success').textContent = `Tarefas da categoria "${currentCategory}" excluídas com sucesso!`;
+                    renderTasks();
+                })
+                .catch(error => log(`Erro ao excluir tarefas da categoria: ${error.message}`));
+        }, { onlyOnce: true });
+    }
+}
+
+function sendToComplexTasks() {
+    if (currentCategory === 'all') {
+        document.getElementById('error').textContent = "Selecione uma categoria específica para enviar!";
+        return;
+    }
+
+    onValue(tasksRefShared, (snapshot) => {
+        const tasks = snapshot.val();
+        if (!tasks) return;
+
+        const tasksToSend = {};
+        Object.entries(tasks).forEach(([key, task]) => {
+            if (task.category === currentCategory) {
+                tasksToSend[key] = { ...task, sharedFrom: 'Projetos Compartilhados' };
             }
         });
 
-        setCategory('mainProjects');
-    </script>
+        update(tasksRefComplex, tasksToSend)
+            .then(() => {
+                document.getElementById('success').textContent = `Tarefas da categoria "${currentCategory}" enviadas para Projetos Complexos!`;
+            })
+            .catch(error => log(`Erro ao enviar tarefas: ${error.message}`));
+    }, { onlyOnce: true });
+}
+
+function shareTask() {
+    const taskText = document.getElementById('taskInput').value.trim();
+    if (!taskText) {
+        document.getElementById('error').textContent = "Digite uma tarefa para compartilhar!";
+        return;
+    }
+
+    const dueDate = document.getElementById('dueDate').value || null;
+    const priority = parseInt(document.getElementById('priority').value) || 1;
+
+    const newTask = {
+        text: taskText,
+        dueDate: dueDate,
+        priority: Math.min(Math.max(priority, 1), 1000),
+        notes: "",
+        completed: false,
+        category: currentCategory,
+        subtasks: [],
+        sharedFrom: 'Projetos Compartilhados'
+    };
+
+    push(tasksRefComplex, newTask)
+        .then(() => {
+            document.getElementById('success').textContent = "Tarefa compartilhada com Projetos Complexos!";
+            resetForm();
+        })
+        .catch(error => log(`Erro ao compartilhar tarefa: ${error.message}`));
+}
+
+document.getElementById('actionButton').addEventListener('click', saveTask);
+document.getElementById('txtBtn').addEventListener('click', exportTasksToTxt);
+document.getElementById('searchBtn').addEventListener('click', searchTasks);
+document.getElementById('shareBtn').addEventListener('click', shareTask);
+document.getElementById('sendToComplexBtn').addEventListener('click', sendToComplexTasks);
+document.getElementById('deleteCategoryBtn').addEventListener('click', deleteCategoryTasks);
+document.getElementById('mainProjectsBtn').addEventListener('click', () => setCategory('mainProjects'));
+document.getElementById('proposedBtn').addEventListener('click', () => setCategory('proposed'));
+document.getElementById('inProgressBtn').addEventListener('click', () => setCategory('inProgress'));
+document.getElementById('futureBtn').addEventListener('click', () => setCategory('future'));
+document.getElementById('allBtn').addEventListener('click', () => setCategory('all'));
+document.getElementById('backBtn').addEventListener('click', () => {
+    document.getElementById('taskInput').value = '';
+    document.getElementById('backBtn').style.display = 'none';
+    renderTasks();
+});
+
+setCategory('mainProjects');
+</script>
 </body>
 </html>
