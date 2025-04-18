@@ -5,8 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Projetos Compartilhados</title>
     <style>
-        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #1a1a1a; color: #e0e0e0; }
-        #loginScreen, #appScreen { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; margin: 0; padding: 0; background: #1a1a1a; color: #e0e0e0; height: 100vh; }
+        #loginScreen, #appScreen { position: absolute; top: 0; left: 0; width: 100%; }
         #loginScreen { 
             background: url('https://images.unsplash.com/photo-1464802686167-b939a6910659?q=80&w=1450&auto=format&fit=crop') no-repeat center center fixed; 
             background-size: cover; 
@@ -14,8 +15,9 @@
             justify-content: center; 
             align-items: center; 
             flex-direction: column;
+            height: 100vh;
         }
-        #appScreen { display: none; padding: 20px; }
+        #appScreen { display: none; padding: 20px; height: 100vh; overflow: auto; }
         .login-container, .register-container { background: rgba(0, 0, 0, 0.8); padding: 20px; border-radius: 10px; text-align: center; }
         .login-container input, .register-container input { 
             width: 100%; max-width: 300px; font-size: 18px; padding: 10px; margin: 10px 0; background: #333; color: #e0e0e0; border: 1px solid #555; border-radius: 5px; }
@@ -32,7 +34,7 @@
         h1 { margin: 0; color: #ffffff; }
         .category-buttons { display: flex; gap: 10px; align-items: center; }
         input, button { font-size: 18px; padding: 10px; margin: 5px; background: #333; color: #e0e0e0; border: 1px solid #555; }
-        #taskInput { width: 600px; }
+        #taskInput { width: 600px; max-width: 100%; }
         button:hover { background: #555; }
         button.active { background: #555; font-weight: bold; }
         .small-btn { font-size: 14px; padding: 5px; width: 30px; height: 30px; line-height: 20px; text-align: center; }
@@ -41,7 +43,7 @@
         .task-row { display: flex; align-items: center; gap: 10px; }
         .notes { display: none; margin-top: 10px; padding: 10px; background: #333; border-radius: 5px; width: 100%; }
         .notes.visible { display: block; }
-        textarea { width: 100%; background: #444; color: #e0e0e0; border: 1px solid #555; padding: 5px; box-sizing: border-box; }
+        textarea { width: 100%; background: #444; color: #e0e0e0; border: 1px solid #555; padding: 5px; }
         .completed { text-decoration: line-through; color: #888; }
         #error, #success { text-align: center; }
         #error { color: #ff5555; }
@@ -196,15 +198,15 @@
                     registerBtn.style.display = 'inline-block';
                     deleteCategoryBtn.style.display = 'inline-block';
                     sendToComplexBtn.style.display = 'inline-block';
-                    shareBtn.style.display = 'inline-block'; // Botão "↻" visível apenas para este usuário
+                    shareBtn.style.display = 'inline-block';
                     setTimeout(() => {
                         registerBtn.style.display = 'none';
-                    }, 3000);
+                    }, 5000);
                 } else {
                     registerBtn.style.display = 'none';
                     deleteCategoryBtn.style.display = 'none';
                     sendToComplexBtn.style.display = 'none';
-                    shareBtn.style.display = 'none'; // Botão "↻" oculto para outros usuários
+                    shareBtn.style.display = 'none';
                 }
                 loginScreen.style.display = 'none';
                 appScreen.style.display = 'block';
@@ -216,7 +218,7 @@
                 appScreen.style.display = 'none';
                 deleteCategoryBtn.style.display = 'none';
                 sendToComplexBtn.style.display = 'none';
-                shareBtn.style.display = 'none'; // Botão "↻" oculto ao deslogar
+                shareBtn.style.display = 'none';
             }
         });
 
@@ -233,7 +235,7 @@
                     if (error.code === 'auth/user-not-found') {
                         messageDiv.textContent = 'Favor cadastrar-se primeiro clicando no botão "Cadastrar" abaixo!';
                         registerBtn.style.display = 'inline-block';
-                        setTimeout(() => registerBtn.style.display = 'none', 3000);
+                        setTimeout(() => registerBtn.style.display = 'none', 5000);
                     } else if (error.code === 'auth/wrong-password') {
                         messageDiv.textContent = "Senha incorreta, favor tentar novamente!";
                     } else {
@@ -276,6 +278,10 @@
         });
 
         function renderUsersList() {
+            if (currentUserEmail !== "psics.psix.141@gmail.com") {
+                usersList.innerHTML = '';
+                return;
+            }
             onValue(usersRef, (snapshot) => {
                 const users = snapshot.val();
                 usersList.innerHTML = '<h3>Usuários Cadastrados</h3>';
@@ -1382,275 +1388,275 @@
         }
 
         function renderTasks() {
-    onValue(tasksRefShared, (snapshot) => {
-        const tasks = snapshot.val();
-        const taskList = document.getElementById('taskList');
-        taskList.innerHTML = '';
+            onValue(tasksRefShared, (snapshot) => {
+                const tasks = snapshot.val();
+                const taskList = document.getElementById('taskList');
+                taskList.innerHTML = '';
 
-        if (!tasks) {
-            taskList.innerHTML = '<li>Nenhuma tarefa encontrada.</li>';
-            return;
-        }
+                if (!tasks) {
+                    taskList.innerHTML = '<li>Nenhuma tarefa encontrada.</li>';
+                    return;
+                }
 
-        const taskArray = Object.entries(tasks)
-            .filter(([_, task]) => currentCategory === 'all' || task.category === currentCategory)
-            .sort((a, b) => {
-                if (a[1].completed !== b[1].completed) return a[1].completed - b[1].completed;
-                const dateA = a[1].dueDate || '9999-12-31';
-                const dateB = b[1].dueDate || '9999-12-31';
-                if (dateA !== dateB) return dateA.localeCompare(dateB);
-                return b[1].priority - a[1].priority;
-            });
+                const taskArray = Object.entries(tasks)
+                    .filter(([_, task]) => currentCategory === 'all' || task.category === currentCategory)
+                    .sort((a, b) => {
+                        if (a[1].completed !== b[1].completed) return a[1].completed - b[1].completed;
+                        const dateA = a[1].dueDate || '9999-12-31';
+                        const dateB = b[1].dueDate || '9999-12-31';
+                        if (dateA !== dateB) return dateA.localeCompare(dateB);
+                        return b[1].priority - a[1].priority;
+                    });
 
-        taskArray.forEach(([key, task]) => {
-            const li = document.createElement('li');
-            li.setAttribute('data-key', key);
-            li.className = task.completed ? 'completed' : '';
-            const isBoldItalic = isPastDue(task.dueDate, task.completed);
-            const hasSubtasks = task.subtasks && task.subtasks.length > 0;
-            const shouldExpand = isToday(task.dueDate) || isTomorrow(task.dueDate);
-            const isExpanded = task.expanded || shouldExpand;
-            const isNotesVisible = task.notesVisible || false;
+                taskArray.forEach(([key, task]) => {
+                    const li = document.createElement('li');
+                    li.setAttribute('data-key', key);
+                    li.className = task.completed ? 'completed' : '';
+                    const isBoldItalic = isPastDue(task.dueDate, task.completed);
+                    const hasSubtasks = task.subtasks && task.subtasks.length > 0;
+                    const shouldExpand = isToday(task.dueDate) || isTomorrow(task.dueDate);
+                    const isExpanded = task.expanded || shouldExpand;
+                    const isNotesVisible = task.notesVisible || false;
 
-            li.innerHTML = `
-                <div class="task-row">
-                    ${hasSubtasks ? `<button class="expand-btn">${isExpanded ? '−' : '+'}</button>` : '<span class="expand-placeholder"></span>'}
-                    <input type="checkbox" ${task.completed ? 'checked' : ''} data-key="${key}" data-path="">
-                    <span class="task-text ${isBoldItalic ? 'bold-italic' : ''}">${task.text} | Data: ${formatDate(task.dueDate)} | Prioridade: ${task.priority}</span>
-                    <button class="level-btn up-btn" disabled data-id="${key}">↑</button>
-                    <button class="level-btn down-btn" ${taskArray.length === 1 ? 'disabled' : ''} data-id="${key}">↓</button>
-                    <div class="category-dropdown">
-                        <button class="category-btn">Categoria</button>
-                        <div class="dropdown-content">
-                            <button class="dropdown-item" data-category="mainProjects">Projetos Principais</button>
-                            <button class="dropdown-item" data-category="proposed">Proj. Propostos</button>
-                            <button class="dropdown-item" data-category="inProgress">Proj. em Andamento</button>
-                            <button class="dropdown-item" data-category="future">Proj. Futuros</button>
+                    li.innerHTML = `
+                        <div class="task-row">
+                            ${hasSubtasks ? `<button class="expand-btn">${isExpanded ? '−' : '+'}</button>` : '<span class="expand-placeholder"></span>'}
+                            <input type="checkbox" ${task.completed ? 'checked' : ''} data-key="${key}" data-path="">
+                            <span class="task-text ${isBoldItalic ? 'bold-italic' : ''}">${task.text} | Data: ${formatDate(task.dueDate)} | Prioridade: ${task.priority}</span>
+                            <button class="level-btn up-btn" disabled data-id="${key}">↑</button>
+                            <button class="level-btn down-btn" ${taskArray.length === 1 ? 'disabled' : ''} data-id="${key}">↓</button>
+                            <div class="category-dropdown">
+                                <button class="category-btn">Categoria</button>
+                                <div class="dropdown-content">
+                                    <button class="dropdown-item" data-category="mainProjects">Projetos Principais</button>
+                                    <button class="dropdown-item" data-category="proposed">Proj. Propostos</button>
+                                    <button class="dropdown-item" data-category="inProgress">Proj. em Andamento</button>
+                                    <button class="dropdown-item" data-category="future">Proj. Futuros</button>
+                                </div>
+                            </div>
+                            <button class="edit-btn" data-key="${key}">Editar</button>
+                            <button class="delete-btn">Excluir</button>
+                            ${hasSubtasks ? '<button class="subtask-btn">Subtarefa</button>' : '<button class="subtask-btn">Subtarefa</button>'}
+                            ${task.notes && task.notes.trim() !== '' ? '<span class="has-notes">(Contém Nota)</span>' : ''}
                         </div>
-                    </div>
-                    <button class="edit-btn" data-key="${key}">Editar</button>
-                    <button class="delete-btn">Excluir</button>
-                    ${hasSubtasks ? '<button class="subtask-btn">Subtarefa</button>' : '<button class="subtask-btn">Subtarefa</button>'}
-                    ${task.notes && task.notes.trim() !== '' ? '<span class="has-notes">(Contém Nota)</span>' : ''}
-                </div>
-                <div class="notes ${isNotesVisible ? 'visible' : ''}">
-                    <textarea rows="3">${task.notes || ''}</textarea>
-                </div>
-                <div class="subtasks-container ${isExpanded ? 'visible' : ''}"></div>
-            `;
+                        <div class="notes ${isNotesVisible ? 'visible' : ''}">
+                            <textarea rows="3">${task.notes || ''}</textarea>
+                        </div>
+                        <div class="subtasks-container ${isExpanded ? 'visible' : ''}"></div>
+                    `;
 
-            if (hasSubtasks) {
-                const subtasksContainer = li.querySelector('.subtasks-container');
-                renderSubtasks(key, task, subtasksContainer, '', 1);
-            }
+                    if (hasSubtasks) {
+                        const subtasksContainer = li.querySelector('.subtasks-container');
+                        renderSubtasks(key, task, subtasksContainer, '', 1);
+                    }
 
-            taskList.appendChild(li);
+                    taskList.appendChild(li);
 
-            li.querySelector('.task-text').addEventListener('click', (e) => {
-                e.stopPropagation();
-                toggleNotes(li, key);
-            });
-            if (hasSubtasks) {
-                li.querySelector('.expand-btn').addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    toggleSubtasks(key, '', li);
+                    li.querySelector('.task-text').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleNotes(li, key);
+                    });
+                    if (hasSubtasks) {
+                        li.querySelector('.expand-btn').addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            toggleSubtasks(key, '', li);
+                        });
+                    }
+                    li.querySelector('.up-btn').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        moveLevelUp(key);
+                    });
+                    li.querySelector('.down-btn').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        moveLevelDown(key);
+                    });
+                    const categoryBtn = li.querySelector('.category-btn');
+                    categoryBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleCategoryDropdown(categoryBtn.parentElement);
+                    });
+                    li.querySelectorAll('.dropdown-item').forEach(item => {
+                        item.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const newCategory = item.getAttribute('data-category');
+                            changeCategory(key, newCategory);
+                            item.closest('.dropdown-content').style.display = 'none';
+                        });
+                    });
+                    li.querySelector('.edit-btn').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        editTask(key);
+                    });
+                    li.querySelector('.delete-btn').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        deleteTask(key);
+                    });
+                    const subtaskBtn = li.querySelector('.subtask-btn');
+                    if (subtaskBtn) {
+                        subtaskBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            addSubtask(key);
+                        });
+                    }
+                    const notesIndicator = li.querySelector('.has-notes');
+                    if (notesIndicator) {
+                        notesIndicator.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            toggleNotes(li, key);
+                        });
+                    }
+                    li.querySelector('textarea').addEventListener('change', (e) => {
+                        updateNotes(key, e.target);
+                    });
+                    li.querySelector('input[type="checkbox"]').addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleTask(key);
+                    });
                 });
-            }
-            li.querySelector('.up-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                moveLevelUp(key);
             });
-            li.querySelector('.down-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                moveLevelDown(key);
-            });
-            const categoryBtn = li.querySelector('.category-btn');
-            categoryBtn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                toggleCategoryDropdown(categoryBtn.parentElement);
-            });
-            li.querySelectorAll('.dropdown-item').forEach(item => {
-                item.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    const newCategory = item.getAttribute('data-category');
-                    changeCategory(key, newCategory);
-                    item.closest('.dropdown-content').style.display = 'none';
-                });
-            });
-            li.querySelector('.edit-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                editTask(key);
-            });
-            li.querySelector('.delete-btn').addEventListener('click', (e) => {
-                e.stopPropagation();
-                deleteTask(key);
-            });
-            const subtaskBtn = li.querySelector('.subtask-btn');
-            if (subtaskBtn) {
-                subtaskBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    addSubtask(key);
-                });
-            }
-            const notesIndicator = li.querySelector('.has-notes');
-            if (notesIndicator) {
-                notesIndicator.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    toggleNotes(li, key);
-                });
-            }
-            li.querySelector('textarea').addEventListener('change', (e) => {
-                updateNotes(key, e.target);
-            });
-            li.querySelector('input[type="checkbox"]').addEventListener('click', (e) => {
-                e.stopPropagation();
-                toggleTask(key);
-            });
-        });
-    });
-}
-
-function exportTasksToTxt() {
-    onValue(tasksRefShared, (snapshot) => {
-        const tasks = snapshot.val();
-        if (!tasks) {
-            document.getElementById('txtNote').value = "Nenhuma tarefa para exportar.";
-            document.getElementById('txtNote').style.display = 'block';
-            return;
         }
 
-        let txtContent = `=== Tarefas Exportadas (${currentCategory === 'all' ? 'Todas' : currentCategory}) ===\n\n`;
-        const exportSubtasks = (subtasks, level) => {
-            subtasks.forEach((subtask, index) => {
-                txtContent += `${'  '.repeat(level)}- ${subtask.text} | Data: ${subtask.dueDate || 'Sem data'} | Prioridade: ${subtask.priority || 1} | ${subtask.completed ? '[Concluída]' : ''}\n`;
-                if (subtask.notes) txtContent += `${'  '.repeat(level + 1)}Notas: ${subtask.notes}\n`;
-                if (subtask.subtasks && subtask.subtasks.length > 0) {
-                    exportSubtasks(subtask.subtasks, level + 1);
+        function exportTasksToTxt() {
+            onValue(tasksRefShared, (snapshot) => {
+                const tasks = snapshot.val();
+                if (!tasks) {
+                    document.getElementById('txtNote').value = "Nenhuma tarefa para exportar.";
+                    document.getElementById('txtNote').style.display = 'block';
+                    return;
                 }
+
+                let txtContent = `=== Tarefas Exportadas (${currentCategory === 'all' ? 'Todas' : currentCategory}) ===\n\n`;
+                const exportSubtasks = (subtasks, level) => {
+                    subtasks.forEach((subtask, index) => {
+                        txtContent += `${'  '.repeat(level)}- ${subtask.text} | Data: ${subtask.dueDate || 'Sem data'} | Prioridade: ${subtask.priority || 1} | ${subtask.completed ? '[Concluída]' : ''}\n`;
+                        if (subtask.notes) txtContent += `${'  '.repeat(level + 1)}Notas: ${subtask.notes}\n`;
+                        if (subtask.subtasks && subtask.subtasks.length > 0) {
+                            exportSubtasks(subtask.subtasks, level + 1);
+                        }
+                    });
+                };
+
+                Object.entries(tasks)
+                    .filter(([_, task]) => currentCategory === 'all' || task.category === currentCategory)
+                    .sort((a, b) => {
+                        if (a[1].completed !== b[1].completed) return a[1].completed - b[1].completed;
+                        const dateA = a[1].dueDate || '9999-12-31';
+                        const dateB = b[1].dueDate || '9999-12-31';
+                        if (dateA !== dateB) return dateA.localeCompare(dateB);
+                        return b[1].priority - a[1].priority;
+                    })
+                    .forEach(([_, task]) => {
+                        txtContent += `- ${task.text} | Data: ${task.dueDate || 'Sem data'} | Prioridade: ${task.priority || 1} | ${task.completed ? '[Concluída]' : ''}\n`;
+                        if (task.notes) txtContent += `  Notas: ${task.notes}\n`;
+                        if (task.subtasks && task.subtasks.length > 0) {
+                            exportSubtasks(task.subtasks, 1);
+                        }
+                    });
+
+                document.getElementById('txtNote').value = txtContent;
+                document.getElementById('txtNote').style.display = 'block';
             });
-        };
+        }
 
-        Object.entries(tasks)
-            .filter(([_, task]) => currentCategory === 'all' || task.category === currentCategory)
-            .sort((a, b) => {
-                if (a[1].completed !== b[1].completed) return a[1].completed - b[1].completed;
-                const dateA = a[1].dueDate || '9999-12-31';
-                const dateB = b[1].dueDate || '9999-12-31';
-                if (dateA !== dateB) return dateA.localeCompare(dateB);
-                return b[1].priority - a[1].priority;
-            })
-            .forEach(([_, task]) => {
-                txtContent += `- ${task.text} | Data: ${task.dueDate || 'Sem data'} | Prioridade: ${task.priority || 1} | ${task.completed ? '[Concluída]' : ''}\n`;
-                if (task.notes) txtContent += `  Notas: ${task.notes}\n`;
-                if (task.subtasks && task.subtasks.length > 0) {
-                    exportSubtasks(task.subtasks, 1);
-                }
-            });
-
-        document.getElementById('txtNote').value = txtContent;
-        document.getElementById('txtNote').style.display = 'block';
-    });
-}
-
-function deleteCategoryTasks() {
-    if (currentCategory === 'all') {
-        document.getElementById('error').textContent = "Não é possível excluir todas as categorias de uma vez!";
-        return;
-    }
-    if (confirm(`Tem certeza que deseja excluir todas as tarefas da categoria "${currentCategory}"?`)) {
-        onValue(tasksRefShared, (snapshot) => {
-            const tasks = snapshot.val();
-            if (!tasks) return;
-
-            const updates = {};
-            Object.entries(tasks).forEach(([key, task]) => {
-                if (task.category === currentCategory) {
-                    updates[key] = null;
-                }
-            });
-
-            update(tasksRefShared, updates)
-                .then(() => {
-                    document.getElementById('success').textContent = `Tarefas da categoria "${currentCategory}" excluídas com sucesso!`;
-                    renderTasks();
-                })
-                .catch(error => log(`Erro ao excluir tarefas da categoria: ${error.message}`));
-        }, { onlyOnce: true });
-    }
-}
-
-function sendToComplexTasks() {
-    if (currentCategory === 'all') {
-        document.getElementById('error').textContent = "Selecione uma categoria específica para enviar!";
-        return;
-    }
-
-    onValue(tasksRefShared, (snapshot) => {
-        const tasks = snapshot.val();
-        if (!tasks) return;
-
-        const tasksToSend = {};
-        Object.entries(tasks).forEach(([key, task]) => {
-            if (task.category === currentCategory) {
-                tasksToSend[key] = { ...task, sharedFrom: 'Projetos Compartilhados' };
+        function deleteCategoryTasks() {
+            if (currentCategory === 'all') {
+                document.getElementById('error').textContent = "Não é possível excluir todas as categorias de uma vez!";
+                return;
             }
+            if (confirm(`Tem certeza que deseja excluir todas as tarefas da categoria "${currentCategory}"?`)) {
+                onValue(tasksRefShared, (snapshot) => {
+                    const tasks = snapshot.val();
+                    if (!tasks) return;
+
+                    const updates = {};
+                    Object.entries(tasks).forEach(([key, task]) => {
+                        if (task.category === currentCategory) {
+                            updates[key] = null;
+                        }
+                    });
+
+                    update(tasksRefShared, updates)
+                        .then(() => {
+                            document.getElementById('success').textContent = `Tarefas da categoria "${currentCategory}" excluídas com sucesso!`;
+                            renderTasks();
+                        })
+                        .catch(error => log(`Erro ao excluir tarefas da categoria: ${error.message}`));
+                }, { onlyOnce: true });
+            }
+        }
+
+        function sendToComplexTasks() {
+            if (currentCategory === 'all') {
+                document.getElementById('error').textContent = "Selecione uma categoria específica para enviar!";
+                return;
+            }
+
+            onValue(tasksRefShared, (snapshot) => {
+                const tasks = snapshot.val();
+                if (!tasks) return;
+
+                const tasksToSend = {};
+                Object.entries(tasks).forEach(([key, task]) => {
+                    if (task.category === currentCategory) {
+                        tasksToSend[key] = { ...task, sharedFrom: 'Projetos Compartilhados' };
+                    }
+                });
+
+                update(tasksRefComplex, tasksToSend)
+                    .then(() => {
+                        document.getElementById('success').textContent = `Tarefas da categoria "${currentCategory}" enviadas para Projetos Complexos!`;
+                    })
+                    .catch(error => log(`Erro ao enviar tarefas: ${error.message}`));
+            }, { onlyOnce: true });
+        }
+
+        function shareTask() {
+            const taskText = document.getElementById('taskInput').value.trim();
+            if (!taskText) {
+                document.getElementById('error').textContent = "Digite uma tarefa para compartilhar!";
+                return;
+            }
+
+            const dueDate = document.getElementById('dueDate').value || null;
+            const priority = parseInt(document.getElementById('priority').value) || 1;
+
+            const newTask = {
+                text: taskText,
+                dueDate: dueDate,
+                priority: Math.min(Math.max(priority, 1), 1000),
+                notes: "",
+                completed: false,
+                category: currentCategory,
+                subtasks: [],
+                sharedFrom: 'Projetos Compartilhados'
+            };
+
+            push(tasksRefComplex, newTask)
+                .then(() => {
+                    document.getElementById('success').textContent = "Tarefa compartilhada com Projetos Complexos!";
+                    resetForm();
+                })
+                .catch(error => log(`Erro ao compartilhar tarefa: ${error.message}`));
+        }
+
+        document.getElementById('actionButton').addEventListener('click', saveTask);
+        document.getElementById('txtBtn').addEventListener('click', exportTasksToTxt);
+        document.getElementById('searchBtn').addEventListener('click', searchTasks);
+        document.getElementById('shareBtn').addEventListener('click', shareTask);
+        document.getElementById('sendToComplexBtn').addEventListener('click', sendToComplexTasks);
+        document.getElementById('deleteCategoryBtn').addEventListener('click', deleteCategoryTasks);
+        document.getElementById('mainProjectsBtn').addEventListener('click', () => setCategory('mainProjects'));
+        document.getElementById('proposedBtn').addEventListener('click', () => setCategory('proposed'));
+        document.getElementById('inProgressBtn').addEventListener('click', () => setCategory('inProgress'));
+        document.getElementById('futureBtn').addEventListener('click', () => setCategory('future'));
+        document.getElementById('allBtn').addEventListener('click', () => setCategory('all'));
+        document.getElementById('backBtn').addEventListener('click', () => {
+            document.getElementById('taskInput').value = '';
+            document.getElementById('backBtn').style.display = 'none';
+            renderTasks();
         });
 
-        update(tasksRefComplex, tasksToSend)
-            .then(() => {
-                document.getElementById('success').textContent = `Tarefas da categoria "${currentCategory}" enviadas para Projetos Complexos!`;
-            })
-            .catch(error => log(`Erro ao enviar tarefas: ${error.message}`));
-    }, { onlyOnce: true });
-}
-
-function shareTask() {
-    const taskText = document.getElementById('taskInput').value.trim();
-    if (!taskText) {
-        document.getElementById('error').textContent = "Digite uma tarefa para compartilhar!";
-        return;
-    }
-
-    const dueDate = document.getElementById('dueDate').value || null;
-    const priority = parseInt(document.getElementById('priority').value) || 1;
-
-    const newTask = {
-        text: taskText,
-        dueDate: dueDate,
-        priority: Math.min(Math.max(priority, 1), 1000),
-        notes: "",
-        completed: false,
-        category: currentCategory,
-        subtasks: [],
-        sharedFrom: 'Projetos Compartilhados'
-    };
-
-    push(tasksRefComplex, newTask)
-        .then(() => {
-            document.getElementById('success').textContent = "Tarefa compartilhada com Projetos Complexos!";
-            resetForm();
-        })
-        .catch(error => log(`Erro ao compartilhar tarefa: ${error.message}`));
-}
-
-document.getElementById('actionButton').addEventListener('click', saveTask);
-document.getElementById('txtBtn').addEventListener('click', exportTasksToTxt);
-document.getElementById('searchBtn').addEventListener('click', searchTasks);
-document.getElementById('shareBtn').addEventListener('click', shareTask);
-document.getElementById('sendToComplexBtn').addEventListener('click', sendToComplexTasks);
-document.getElementById('deleteCategoryBtn').addEventListener('click', deleteCategoryTasks);
-document.getElementById('mainProjectsBtn').addEventListener('click', () => setCategory('mainProjects'));
-document.getElementById('proposedBtn').addEventListener('click', () => setCategory('proposed'));
-document.getElementById('inProgressBtn').addEventListener('click', () => setCategory('inProgress'));
-document.getElementById('futureBtn').addEventListener('click', () => setCategory('future'));
-document.getElementById('allBtn').addEventListener('click', () => setCategory('all'));
-document.getElementById('backBtn').addEventListener('click', () => {
-    document.getElementById('taskInput').value = '';
-    document.getElementById('backBtn').style.display = 'none';
-    renderTasks();
-});
-
-setCategory('mainProjects');
-</script>
+        setCategory('mainProjects');
+    </script>
 </body>
 </html>
